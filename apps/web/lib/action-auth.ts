@@ -86,8 +86,8 @@ export function actorTypedData(authorization: Omit<ActorAuthorization, "signatur
     primaryType: "ActorIntent" as const,
     message: {
       ...authorization,
-      nonce: BigInt(authorization.nonce),
-      deadline: BigInt(authorization.deadline),
+      nonce: String(authorization.nonce),
+      deadline: String(authorization.deadline),
     },
   };
 }

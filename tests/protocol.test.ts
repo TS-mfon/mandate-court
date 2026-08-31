@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { deliveryManifestSchema, mandateSchema } from "../packages/schemas/src/index";
 import { courtAgentCard } from "../apps/web/lib/agent-card";
+import { actorTypedData } from "../apps/web/lib/action-auth";
 
 const mandate = {
   protocol: "mandate-court/1.0",
@@ -70,5 +71,21 @@ describe("agent discovery card", () => {
     expect(card.preferredTransport).toBe("HTTP+JSON");
     expect(card.documentationUrl).toBe("https://mandate-court.vercel.app/docs");
     expect(card.additionalInterfaces).toEqual([]);
+  });
+});
+
+describe("typed data transport", () => {
+  it("is JSON serializable for autonomous API clients", () => {
+    process.env.MANDATE_REGISTRY_ADDRESS = "0x1111111111111111111111111111111111111111";
+    const typedData = actorTypedData({
+      mandateId: `0x${"1".repeat(64)}`,
+      action: `0x${"2".repeat(64)}`,
+      payloadHash: `0x${"3".repeat(64)}`,
+      actor: "0x2222222222222222222222222222222222222222",
+      nonce: "0",
+      deadline: "1788300000",
+    });
+    expect(() => JSON.stringify(typedData)).not.toThrow();
+    expect(typedData.message.nonce).toBe("0");
   });
 });
