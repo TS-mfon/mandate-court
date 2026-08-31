@@ -1,0 +1,26 @@
+{
+  "name": "mandate-court",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "build": "pnpm --filter @mandate-court/schemas build && pnpm --filter @mandate-court/sdk build && pnpm --filter @mandate-court/cli build && pnpm --filter @mandate-court/web build",
+    "dev": "pnpm --filter @mandate-court/web dev",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm test:contracts && pnpm test:unit",
+    "test:contracts": "forge test --root contracts/base -vvv",
+    "test:unit": "vitest run",
+    "test:genlayer": "uvx --from genvm-linter genvm-lint check contracts/genlayer/mandate_adjudicator.py && uvx --offline --from genlayer-test gltest contracts/genlayer/tests/direct -v -s",
+    "test:studionet": "uvx --from genvm-linter genvm-lint schema contracts/genlayer/mandate_adjudicator.py --json | jq '.schema' > contracts/genlayer/mandate_adjudicator.schema.json && uvx --from genlayer-test gltest contracts/genlayer/tests/integration -v -s --network studionet",
+    "test:oneshot": "tsx scripts/probe-oneshot.ts",
+    "validate": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "court": "pnpm --filter @mandate-court/cli start"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "next": "16.3.3",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

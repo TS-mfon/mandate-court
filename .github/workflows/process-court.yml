@@ -1,0 +1,25 @@
+name: Process Mandate Court Jobs
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: mandate-court-processor
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Invoke protected processor
+        env:
+          CRON_SECRET: ${{ secrets.MANDATE_COURT_CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-all-errors --max-time 180 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            https://mandate-court.vercel.app/api/internal/process

@@ -1,0 +1,5 @@
+contract_path: contracts/genlayer
+
+networks:
+  localnet: {}
+  studionet: {}

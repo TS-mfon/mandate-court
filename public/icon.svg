@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>Mandate Court</title>
+  <rect width="128" height="128" rx="28" fill="#101010"/>
+  <path d="M24 43 64 20l40 23v9L64 75 24 52z" fill="#f2eee4"/>
+  <path d="M31 58h66v8H31zM39 70h50v8H39z" fill="#d9a96e"/>
+  <path d="M24 88h80v10H24z" fill="#f2eee4"/>
+  <circle cx="64" cy="43" r="7" fill="#101010"/>
+</svg>

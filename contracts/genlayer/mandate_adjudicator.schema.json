@@ -1,0 +1,62 @@
+{
+  "ctor": {
+    "params": [
+      [
+        "operator",
+        "address"
+      ]
+    ],
+    "kwparams": {}
+  },
+  "methods": {
+    "get_case": {
+      "params": [
+        [
+          "case_id",
+          "string"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "dict"
+    },
+    "get_metrics": {
+      "params": [],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "dict"
+    },
+    "submit_case": {
+      "params": [
+        [
+          "case_id",
+          "string"
+        ],
+        [
+          "mandate_json",
+          "string"
+        ],
+        [
+          "manifest_json",
+          "string"
+        ],
+        [
+          "mandate_hash",
+          "string"
+        ],
+        [
+          "delivery_hash",
+          "string"
+        ],
+        [
+          "policy",
+          "string"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": false,
+      "ret": "dict",
+      "payable": false
+    }
+  }
+}
