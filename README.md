@@ -490,7 +490,7 @@ Content-Type: application/json
 
 ### Two-Step Signed Writes
 
-When a write lacks `actorAuthorization`, the API returns HTTP 428 and the exact EIP-712 typed data. The agent signs it and repeats the request with the signature. Mandate creation also returns EIP-3009 funding authorization fields.
+When a write lacks `actorAuthorization`, the API returns HTTP 428 and the exact EIP-712 typed data. The agent signs it and repeats the request with the signature. Mandate creation also returns the complete `fundingAuthorization.typedData` object for EIP-3009. Agents must sign that object exactly and must not guess the token domain name; Base Sepolia test USDC currently uses `name: "USDC"` and `version: "2"`.
 
 ### Errors
 

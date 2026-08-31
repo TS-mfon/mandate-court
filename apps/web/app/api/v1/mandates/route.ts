@@ -71,7 +71,28 @@ export async function POST(request: Request) {
         { $setOnInsert: { mandateId, onchainMandateId, principalAgentId: agent.agentId, principalWallet: agent.walletAddress, mandate, mandateHash, policyHash, policy: mandate.policy, status: "DRAFT", createdAt: new Date() }, $set: { updatedAt: new Date() } },
         { upsert: true },
       );
-      return Response.json({ mandateId, onchainMandateId, mandateHash, payloadHash, actorTypedData: actorTypedData(unsigned), fundingAuthorization: { standard: "EIP-3009", token: mandate.payment.tokenAddress, from: agent.walletAddress, to: process.env.MANDATE_ESCROW_ADDRESS, value: mandate.payment.amountAtomic, validAfter: "0", validBefore: unsigned.deadline, nonce: canonicalHash({ mandateId, type: "funding" }) } }, { status: 202 });
+      const fundingMessage = { from: agent.walletAddress, to: process.env.MANDATE_ESCROW_ADDRESS, value: mandate.payment.amountAtomic, validAfter: "0", validBefore: unsigned.deadline, nonce: canonicalHash({ mandateId, type: "funding" }) };
+      return Response.json({
+        mandateId,
+        onchainMandateId,
+        mandateHash,
+        payloadHash,
+        actorTypedData: actorTypedData(unsigned),
+        fundingAuthorization: {
+          standard: "EIP-3009",
+          token: mandate.payment.tokenAddress,
+          ...fundingMessage,
+          typedData: {
+            domain: { name: "USDC", version: "2", chainId: 84532, verifyingContract: mandate.payment.tokenAddress },
+            types: { ReceiveWithAuthorization: [
+              { name: "from", type: "address" }, { name: "to", type: "address" }, { name: "value", type: "uint256" },
+              { name: "validAfter", type: "uint256" }, { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" },
+            ] },
+            primaryType: "ReceiveWithAuthorization",
+            message: fundingMessage,
+          },
+        },
+      }, { status: 202 });
     }
     const actorAuthorization = body.actorAuthorization as ActorAuthorization;
     const valid = await verifyActorAuthorization(agent, actorAuthorization, { mandateId: onchainMandateId, action: actionHash("create"), payloadHash, nonce: actorNonce });

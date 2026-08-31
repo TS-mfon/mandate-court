@@ -146,4 +146,5 @@ The production dependency graph previously reported a moderate `uuid` advisory b
 - GenLayer recomputes mandate/delivery commitments, fetches artifacts and evidence, and rejects `PASS` findings supported by inaccessible or hash-mismatched sources.
 - The daily Vercel cron was removed in favor of `.github/workflows/process-court.yml` at an approximate five-minute cadence.
 - The live StudioNet matrix was rerun and failed at the second primary case. This remains a release blocker.
+- The corrected live StudioNet matrix subsequently passed all 17 outcomes: 10 primary judgments, 4 native appeals, and 3 adversarial evidence cases.
 - The single court-attestor trust model remains a mainnet blocker even though Base rejects settlement data inconsistent with its canonical registries.

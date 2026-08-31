@@ -83,7 +83,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
-        '202': { description: Typed data prepared or relay queued }
+        '202': { description: Actor typed data plus complete EIP-3009 funding typed data prepared, or relay queued }
         '428': { description: Signature required }
   /api/v1/mandates/{mandateId}/accept:
     post:

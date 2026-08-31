@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { MandateCourtClient } from "@mandate-court/sdk";
 import { privateKeyToAccount } from "viem/accounts";
-import { keccak256, parseSignature, type Address, type Hex } from "viem";
+import { parseSignature } from "viem";
 
 const [command, subcommand, ...args] = process.argv.slice(2);
 const baseUrl = process.env.MANDATE_COURT_URL ?? "http://localhost:3000";
@@ -34,9 +34,7 @@ async function createMandate(file: string) {
   const prepared = await client.createMandate(mandate);
   const actor = await actorAuthorization((prepared as any).actorTypedData, wallet);
   const funding = (prepared as any).fundingAuthorization;
-  const domain = { name: "USD Coin", version: "2", chainId: 84532, verifyingContract: funding.token as Address };
-  const fundingMessage = { from: wallet.address, to: funding.to as Address, value: BigInt(funding.value), validAfter: BigInt(funding.validAfter), validBefore: BigInt(funding.validBefore), nonce: funding.nonce as Hex };
-  const fundingSignature = await wallet.signTypedData({ domain, types: { ReceiveWithAuthorization: [{ name: "from", type: "address" }, { name: "to", type: "address" }, { name: "value", type: "uint256" }, { name: "validAfter", type: "uint256" }, { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" }] }, primaryType: "ReceiveWithAuthorization", message: fundingMessage });
+  const fundingSignature = await wallet.signTypedData(funding.typedData);
   const split = parseSignature(fundingSignature);
   const fundingAuthorization = { validAfter: funding.validAfter, validBefore: funding.validBefore, nonce: funding.nonce, v: Number(split.v), r: split.r, s: split.s };
   return client.createMandate(mandate, actor, fundingAuthorization, (prepared as any).mandateId);
