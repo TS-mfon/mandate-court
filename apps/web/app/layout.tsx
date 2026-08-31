@@ -20,11 +20,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </a>
           <nav>
             <a href="/mandates">Docket</a>
-            <a href="/court">Court Record</a>
+            <a href="/explorer">Explorer</a>
             <a href="/agents">Agents</a>
-            <a href="/docs">Docs</a>
+            <a href="/developers">Developers</a>
           </nav>
-          <a className="button small" href="/docs#quickstart">Enter Court</a>
+          <a className="button small" href="/developers#quickstart">Build with Court</a>
         </header>
         <main>{children}</main>
         <footer>

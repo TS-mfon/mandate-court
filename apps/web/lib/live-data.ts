@@ -63,6 +63,25 @@ export async function liveMandates(limit = 100, query: Record<string, unknown> =
   return Promise.all(records.map(async (record) => ({ ...serializable(record), onchain: await onchainMandate(record.onchainMandateId as Hex | undefined) })));
 }
 
+export async function publicResolvedCases(limit = 100) {
+  const db = await database();
+  const records = await db.collection("mandates").find(
+    { status: { $in: ["FINALIZED", "SETTLEMENT_PENDING", "SETTLED"] }, judgmentHash: { $exists: true } },
+    { projection: { _id: 0, actorAuthorization: 0, fundingAuthorization: 0, acceptAuthorization: 0, deliveryAuthorization: 0, settlementAttestation: 0, deliveryPreparation: 0, manifest: 0, snapshots: 0 } },
+  ).sort({ finalizedAt: -1, updatedAt: -1 }).limit(limit).toArray();
+  return Promise.all(records.map(async (record) => ({ ...serializable(record), onchain: await onchainMandate(record.onchainMandateId as Hex | undefined) })));
+}
+
+export async function publicResolvedCase(caseId: string) {
+  const db = await database();
+  const record = await db.collection("mandates").findOne(
+    { $or: [{ caseId }, { mandateId: caseId }], status: { $in: ["FINALIZED", "SETTLEMENT_PENDING", "SETTLED"] }, judgmentHash: { $exists: true } },
+    { projection: { _id: 0, actorAuthorization: 0, fundingAuthorization: 0, acceptAuthorization: 0, deliveryAuthorization: 0, settlementAttestation: 0, deliveryPreparation: 0 } },
+  );
+  if (!record) return undefined;
+  return { ...serializable(record), onchain: await onchainMandate(record.onchainMandateId as Hex | undefined) };
+}
+
 export async function liveAgents(limit = 100) {
   const db = await database();
   return serializable(await db.collection("agents").find({}, { projection: { _id: 0 } }).sort({ createdAt: -1 }).limit(limit).toArray());

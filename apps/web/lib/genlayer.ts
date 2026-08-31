@@ -18,6 +18,17 @@ function client() {
   return createClient({ chain: studionet, endpoint: process.env.GENLAYER_RPC_URL, account: createAccount(privateKey) });
 }
 
+function readClient() {
+  return createClient({ chain: studionet, endpoint: process.env.GENLAYER_RPC_URL });
+}
+
+export async function readGenLayerCase(caseId: string) {
+  const address = process.env.GENLAYER_CONTRACT_ADDRESS as `0x${string}` | undefined;
+  if (!address) throw new Error("GENLAYER_CONTRACT_ADDRESS is not configured");
+  const result = await readClient().readContract({ address, functionName: "get_case", args: [caseId], jsonSafeReturn: true });
+  return result as Record<string, any>;
+}
+
 export async function submitAdjudication(mandate: Record<string, any>) {
   const address = process.env.GENLAYER_CONTRACT_ADDRESS as `0x${string}` | undefined;
   if (!address) throw new Error("GENLAYER_CONTRACT_ADDRESS is not configured");

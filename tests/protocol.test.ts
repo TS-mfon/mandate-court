@@ -7,6 +7,7 @@ import { MandateCourtClient } from "../packages/sdk/src/index";
 import { successfulFinalizedExecution } from "../apps/web/lib/genlayer";
 import { deliveryTimestampIsCurrent } from "../apps/web/lib/delivery-time";
 import { terminalRelayError } from "../apps/web/lib/processor-errors";
+import { compactCaseId } from "../apps/web/lib/case-display";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -100,6 +101,12 @@ describe("relay retry classification", () => {
   it("retries network and provider availability errors", () => {
     expect(terminalRelayError(new Error("fetch failed"))).toBe(false);
     expect(terminalRelayError(new Error("relayer temporarily unavailable"))).toBe(false);
+  });
+});
+
+describe("case display identity", () => {
+  it("keeps long protocol identifiers out of headings", () => {
+    expect(compactCaseId("MC_940c1ce705f84b0c894c0c54b84bed3b")).toBe("MC-940C1CE7");
   });
 });
 
