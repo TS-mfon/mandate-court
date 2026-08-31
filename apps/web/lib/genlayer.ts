@@ -3,6 +3,15 @@ import { canonicalJson } from "./crypto";
 import { studionet } from "genlayer-js/chains";
 import { ExecutionResult, TransactionStatus } from "genlayer-js/types";
 
+export function successfulFinalizedExecution(receipt: Record<string, any>) {
+  const executionResult = receipt.txExecutionResultName ?? receipt.tx_execution_result_name;
+  if (executionResult !== undefined && executionResult !== null) {
+    return String(executionResult).toUpperCase() === ExecutionResult.FINISHED_WITH_RETURN;
+  }
+  const consensusResult = receipt.resultName ?? receipt.result_name;
+  return String(consensusResult ?? "").toUpperCase() === "MAJORITY_AGREE";
+}
+
 function client() {
   const privateKey = process.env.GENLAYER_OPERATOR_PRIVATE_KEY as `0x${string}` | undefined;
   if (!privateKey) throw new Error("GENLAYER_OPERATOR_PRIVATE_KEY is not configured");
@@ -44,8 +53,8 @@ export async function judgmentProgress(transactionId: `0x${string}`, mandateId: 
     }
   }
   if (!finalized) return { status, accepted, finalized: false, receipt, stored };
-  if (receipt.txExecutionResultName !== ExecutionResult.FINISHED_WITH_RETURN) {
-    throw new Error(`GenLayer execution finalized with ${receipt.txExecutionResultName}`);
+  if (!successfulFinalizedExecution(receipt as Record<string, any>)) {
+    throw new Error(`GenLayer execution finalized without successful consensus (${receipt.txExecutionResultName ?? (receipt as any).resultName ?? (receipt as any).result_name ?? "unknown"})`);
   }
   if (!stored) stored = await court.readContract({ address, functionName: "get_case", args: [mandateId], jsonSafeReturn: true });
   return { status, accepted, finalized: true, receipt, stored };

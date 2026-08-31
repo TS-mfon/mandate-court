@@ -1,7 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { deliveryManifestSchema, mandateSchema } from "../packages/schemas/src/index";
 import { courtAgentCard } from "../apps/web/lib/agent-card";
 import { actorTypedData } from "../apps/web/lib/action-auth";
+import { normalizeCliArgs, resolveCliPath } from "../packages/cli/src/args";
+import { MandateCourtClient } from "../packages/sdk/src/index";
+import { successfulFinalizedExecution } from "../apps/web/lib/genlayer";
+import { deliveryTimestampIsCurrent } from "../apps/web/lib/delivery-time";
+import { terminalRelayError } from "../apps/web/lib/processor-errors";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const mandate = {
   protocol: "mandate-court/1.0",
@@ -19,6 +26,82 @@ const mandate = {
   allowPartialSettlement: true,
   appealPolicy: { principalAppeals: 1, providerAppeals: 1, lockedRecordOnly: true },
 };
+
+describe("CLI argument forwarding", () => {
+  it("removes pnpm's literal separator", () => {
+    expect(normalizeCliArgs(["--", "mandates", "create", "--file", "mandate.json"])).toEqual([
+      "mandates",
+      "create",
+      "--file",
+      "mandate.json",
+    ]);
+  });
+
+  it("resolves files from the caller's initial directory", () => {
+    expect(resolveCliPath("fixtures/mandate.json", "/workspace/mandate-court")).toBe(
+      "/workspace/mandate-court/fixtures/mandate.json",
+    );
+  });
+});
+
+describe("SDK signing challenges", () => {
+  it("returns an intentional HTTP 428 preparation payload", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ actorTypedData: { primaryType: "ActorIntent" } }), {
+      status: 428,
+      headers: { "content-type": "application/json" },
+    })));
+    const client = new MandateCourtClient({ baseUrl: "https://mandate.example" });
+    await expect(client.prepareAccept("MC-001")).resolves.toMatchObject({ actorTypedData: { primaryType: "ActorIntent" } });
+  });
+
+  it("still rejects unexpected error statuses", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    })));
+    const client = new MandateCourtClient({ baseUrl: "https://mandate.example" });
+    await expect(client.prepareAccept("MC-001")).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe("GenLayer finalized receipt compatibility", () => {
+  it("accepts the explicit execution result shape", () => {
+    expect(successfulFinalizedExecution({ txExecutionResultName: "FINISHED_WITH_RETURN" })).toBe(true);
+    expect(successfulFinalizedExecution({ txExecutionResultName: "FINISHED_WITH_ERROR", result_name: "MAJORITY_AGREE" })).toBe(false);
+  });
+
+  it("accepts StudioNet majority-agree receipts when execution detail is absent", () => {
+    expect(successfulFinalizedExecution({ result_name: "MAJORITY_AGREE" })).toBe(true);
+    expect(successfulFinalizedExecution({ resultName: "MAJORITY_DISAGREE" })).toBe(false);
+    expect(successfulFinalizedExecution({ result_name: "NO_MAJORITY" })).toBe(false);
+  });
+});
+
+describe("delivery time integrity", () => {
+  const now = Date.parse("2026-08-31T12:00:00.000Z");
+
+  it("accepts a current timestamp before the deadline", () => {
+    expect(deliveryTimestampIsCurrent("2026-08-31T11:55:00.000Z", "2026-09-01T00:00:00.000Z", now)).toBe(true);
+  });
+
+  it("rejects materially backdated, future, and post-deadline timestamps", () => {
+    expect(deliveryTimestampIsCurrent("2026-08-31T11:30:00.000Z", "2026-09-01T00:00:00.000Z", now)).toBe(false);
+    expect(deliveryTimestampIsCurrent("2026-08-31T12:30:00.000Z", "2026-09-01T00:00:00.000Z", now)).toBe(false);
+    expect(deliveryTimestampIsCurrent("2026-08-31T12:05:00.000Z", "2026-08-31T12:00:00.000Z", now)).toBe(false);
+  });
+});
+
+describe("relay retry classification", () => {
+  it("terminates cryptographically irrecoverable authorization errors", () => {
+    expect(terminalRelayError(new Error("FiatTokenV2: invalid signature"))).toBe(true);
+    expect(terminalRelayError(new Error("authorization expired"))).toBe(true);
+  });
+
+  it("retries network and provider availability errors", () => {
+    expect(terminalRelayError(new Error("fetch failed"))).toBe(false);
+    expect(terminalRelayError(new Error("relayer temporarily unavailable"))).toBe(false);
+  });
+});
 
 describe("mandate schema", () => {
   it("accepts a decision-complete weighted mandate", () => {

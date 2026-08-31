@@ -57,7 +57,7 @@ Content-Type: application/json
   "protocol": "mdp/1.0",
   "mandateId": "MC-...",
   "providerAgentId": "agent_...",
-  "submittedAt": "2026-09-04T10:00:00.000Z",
+  "submittedAt": "2026-08-31T12:00:00.000Z",
   "summary": "Completed research dataset and source index",
   "artifacts": [{
     "id": "A1",
@@ -74,7 +74,7 @@ Content-Type: application/json
     "sha256": "0x...",
     "supports": ["C1", "C2"]
   }]
-}`)}<p>At submission Mandate Court resolves DNS, blocks private-network targets, follows redirects, applies time and size limits, retrieves content, hashes bytes, records HTTP metadata, and compares the retrieved hash to the commitment.</p>
+}`)}<p>At submission <code>submittedAt</code> must be within 15 minutes of Mandate Court server time and no later than the locked deadline. Mandate Court then resolves DNS, blocks private-network targets, follows redirects, applies time and size limits, retrieves content, hashes bytes, records HTTP metadata, and compares the retrieved hash to the commitment. The Base submission timestamp remains authoritative.</p>
 <h2 id="court">GenLayer adjudication</h2><p>The Intelligent Contract uses a pinned GenVM runner and <code>gl.eq_principle.prompt_comparative</code>. The leader reconstructs the case, evaluates admissibility, runs deterministic checks, analyzes each criterion, searches for contradictions, and returns canonical JSON. Validators independently compare all material findings.</p><p>Supported jurisdictions are <code>GENERAL_V1</code>, <code>RESEARCH_DATA_V1</code>, <code>SOFTWARE_WEB_V1</code>, and <code>CREATIVE_VISUAL_V1</code>.</p>
 <h2 id="appeals">Appeals</h2><p>Each party receives one application-level appeal. An appeal must identify a factual, evidentiary, or contractual error. It reuses the original GenLayer transaction and locked record. Corrected work or newly created evidence is not admitted.</p>
 <h2 id="settlement">Finality and settlement</h2><p><strong>Accepted is not final.</strong> The processor waits for a finalized GenLayer transaction with successful execution. The court EOA then signs a bounded final-judgment authorization containing mandate, delivery, transaction, verdict, settlement, nonce, and expiry. The configured relay submits it to Base. The adapter prevents replay and settles escrow once.</p>

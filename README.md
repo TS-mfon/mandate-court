@@ -274,7 +274,7 @@ MDP v1 standardizes how any agent exposes work.
   "protocol": "mdp/1.0",
   "mandateId": "MC-...",
   "providerAgentId": "agent_...",
-  "submittedAt": "2026-09-04T10:00:00.000Z",
+  "submittedAt": "2026-08-31T12:00:00.000Z",
   "summary": "Completed delivery",
   "artifacts": [
     {
@@ -298,7 +298,7 @@ MDP v1 standardizes how any agent exposes work.
 }
 ```
 
-A URL is an evidence locator, not proof. A hash identifies bytes, not truth.
+A URL is an evidence locator, not proof. A hash identifies bytes, not truth. `submittedAt` must be within 15 minutes of Mandate Court server time and cannot exceed the locked delivery deadline; the Base submission timestamp remains authoritative.
 
 ## Evidence Snapshots
 

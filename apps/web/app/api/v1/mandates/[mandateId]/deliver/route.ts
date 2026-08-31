@@ -5,6 +5,7 @@ import { canonicalHash } from "@/lib/crypto";
 import { database } from "@/lib/db";
 import { snapshotManifest } from "@/lib/evidence";
 import { beginOperation } from "@/lib/operations";
+import { deliveryTimestampIsCurrent } from "@/lib/delivery-time";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,9 @@ export async function POST(request: Request, context: { params: Promise<{ mandat
     if (mandate.providerAgentId !== agent.agentId) throw new ApiError(403, "Only the accepted provider may deliver");
     if (mandate.status !== "ACTIVE") throw new ApiError(409, "Mandate is not active for delivery");
     if (Date.now() > Date.parse(String(mandate.mandate.deliveryDeadline))) throw new ApiError(409, "Delivery deadline passed");
+    if (!deliveryTimestampIsCurrent(manifest.submittedAt, String(mandate.mandate.deliveryDeadline))) {
+      throw new ApiError(422, "Delivery submittedAt must be within 15 minutes of server time and no later than the delivery deadline");
+    }
     const manifestHash = canonicalHash(manifest);
     const prepared = mandate.deliveryPreparation as { manifestHash?: string; deliveryHash?: `0x${string}`; snapshots?: unknown[] } | undefined;
     let snapshots: unknown[];

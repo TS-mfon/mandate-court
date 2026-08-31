@@ -3,6 +3,7 @@ import { relayAccept, relayCreate, relayDelivery, relayLinkCase, relayRecordAcce
 import { acquireProcessorLease, database, releaseProcessorLease } from "@/lib/db";
 import { appealJudgment, judgmentProgress, submitAdjudication } from "@/lib/genlayer";
 import { enqueueWebhook } from "@/lib/webhooks";
+import { terminalRelayError } from "@/lib/processor-errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
           if (String(status.taskState) !== "ExecSuccess") throw new Error(`${status.provider} task ${status.taskState}`);
           const nextStatus = job.type === "CREATE_MANDATE" ? "OPEN" : job.type === "ACCEPT_MANDATE" ? "ACTIVE" : job.type === "SUBMIT_DELIVERY" ? "SUBMITTED" : job.type === "SETTLEMENT" ? "SETTLED" : undefined;
           await db.collection("mandates").updateOne({ _id: mandate._id }, { $set: { ...(nextStatus ? { status: nextStatus } : {}), baseTransactionHash: "transactionHash" in status ? status.transactionHash : undefined, updatedAt: new Date() } });
-          await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: "COMPLETED", lastStatus: status, updatedAt: new Date() } });
+          await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: "COMPLETED", lastStatus: status, updatedAt: new Date() }, $unset: { lastError: "" } });
           if (job.type === "SUBMIT_DELIVERY") await db.collection("relayJobs").updateOne({ mandateId: job.mandateId, type: "GENLAYER_ADJUDICATION" }, { $set: { status: "PENDING", nextAttemptAt: new Date() } });
           if (job.type === "CREATE_MANDATE" && mandate.providerAgentId) {
             await enqueueWebhook(mandate.providerAgentId, "mandate.assigned", { mandateId: mandate.mandateId, mandateUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}`, acceptUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}/accept` });
@@ -126,7 +127,7 @@ export async function GET(request: Request) {
             } else {
               if (!stored) throw new Error("Finalized GenLayer judgment is unavailable");
               await db.collection("mandates").updateOne({ _id: mandate._id }, { $set: { judgment: stored.judgment, judgmentHash: stored.judgment_hash, status: "FINALIZED", finalizedAt: new Date(), updatedAt: new Date() } });
-              await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: "COMPLETED", updatedAt: new Date() } });
+              await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: "COMPLETED", updatedAt: new Date() }, $unset: { lastError: "" } });
               await db.collection("relayJobs").updateOne(
                 { mandateId: mandate.mandateId, type: "RECORD_ACCEPTED" },
                 { $setOnInsert: { operationId: job.operationId, type: "RECORD_ACCEPTED", mandateId: mandate.mandateId, status: "PENDING", attempts: 0, nextAttemptAt: new Date(), createdAt: new Date() } },
@@ -141,7 +142,7 @@ export async function GET(request: Request) {
           }
         } else if (job.type === "GENLAYER_APPEAL") {
           const appealSubmissionHash = await appealJudgment(mandate.genlayerTransactionId);
-          await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: "COMPLETED", appealSubmissionHash, appealedTransactionId: mandate.genlayerTransactionId, updatedAt: new Date() } });
+          await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: "COMPLETED", appealSubmissionHash, appealedTransactionId: mandate.genlayerTransactionId, updatedAt: new Date() }, $unset: { lastError: "" } });
           await db.collection("mandates").updateOne(
             { _id: mandate._id },
             { $set: { status: "APPEALED", activeGenlayerTransactionId: mandate.genlayerTransactionId, "appeals.$[appeal].status": "SUBMITTED", "appeals.$[appeal].submissionHash": appealSubmissionHash, updatedAt: new Date() } },
@@ -151,7 +152,8 @@ export async function GET(request: Request) {
         results.push({ job: job._id, status: "PROCESSED" });
       } catch (error) {
         const attempts = Number(job.attempts ?? 0) + 1;
-        await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: attempts >= 8 ? "FAILED" : "PENDING", attempts, lastError: error instanceof Error ? error.message : String(error), nextAttemptAt: new Date(Date.now() + Math.min(2 ** attempts * 5_000, 15 * 60_000)), updatedAt: new Date() } });
+        const terminal = terminalRelayError(error);
+        await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: terminal || attempts >= 8 ? "FAILED" : "PENDING", attempts, lastError: error instanceof Error ? error.message : String(error), nextAttemptAt: new Date(Date.now() + Math.min(2 ** attempts * 5_000, 15 * 60_000)), updatedAt: new Date() } });
         results.push({ job: job._id, status: "ERROR", error: error instanceof Error ? error.message : String(error) });
       }
     }

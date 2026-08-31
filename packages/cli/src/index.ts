@@ -3,8 +3,10 @@ import { readFile } from "node:fs/promises";
 import { MandateCourtClient } from "@mandate-court/sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import { parseSignature } from "viem";
+import { normalizeCliArgs, resolveCliPath } from "./args.js";
 
-const [command, subcommand, ...args] = process.argv.slice(2);
+const cliArgs = normalizeCliArgs(process.argv.slice(2));
+const [command, subcommand, ...args] = cliArgs;
 const baseUrl = process.env.MANDATE_COURT_URL ?? "http://localhost:3000";
 const client = new MandateCourtClient({ baseUrl, apiKey: process.env.MANDATE_COURT_API_KEY });
 
@@ -14,7 +16,7 @@ function value(flag: string) {
 }
 
 function output(data: unknown) {
-  console.log(JSON.stringify(data, null, process.argv.includes("--json") ? 0 : 2));
+  console.log(JSON.stringify(data, null, cliArgs.includes("--json") ? 0 : 2));
 }
 
 function account() {
@@ -30,7 +32,7 @@ async function actorAuthorization(typedData: any, wallet: ReturnType<typeof acco
 
 async function createMandate(file: string) {
   const wallet = account();
-  const mandate = JSON.parse(await readFile(file, "utf8"));
+  const mandate = JSON.parse(await readFile(resolveCliPath(file), "utf8"));
   const prepared = await client.createMandate(mandate);
   const actor = await actorAuthorization((prepared as any).actorTypedData, wallet);
   const funding = (prepared as any).fundingAuthorization;
@@ -42,7 +44,7 @@ async function createMandate(file: string) {
 
 async function deliverMandate(mandateId: string, file: string) {
   const wallet = account();
-  const manifest = JSON.parse(await readFile(file, "utf8"));
+  const manifest = JSON.parse(await readFile(resolveCliPath(file), "utf8"));
   const prepared = await client.submitDelivery(mandateId, manifest);
   const actor = await actorAuthorization((prepared as any).actorTypedData, wallet);
   return client.submitDelivery(mandateId, manifest, actor, (prepared as any).deliveryHash);

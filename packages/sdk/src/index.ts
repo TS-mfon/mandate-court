@@ -12,13 +12,13 @@ export class MandateCourtError extends Error {
 export class MandateCourtClient {
   constructor(private readonly options: MandateCourtClientOptions) {}
 
-  async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  async request<T>(path: string, init: RequestInit = {}, acceptedStatuses: number[] = []): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("content-type", "application/json");
     if (this.options.apiKey) headers.set("authorization", `Bearer ${this.options.apiKey}`);
     const response = await fetch(new URL(path, this.options.baseUrl), { ...init, headers });
     const body = await response.json().catch(() => null);
-    if (!response.ok) throw new MandateCourtError(response.status, body);
+    if (!response.ok && !acceptedStatuses.includes(response.status)) throw new MandateCourtError(response.status, body);
     return body as T;
   }
 
@@ -64,7 +64,7 @@ export class MandateCourtClient {
       method: "POST",
       headers: { "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ manifest, actorAuthorization, deliveryHash }),
-    });
+    }, actorAuthorization ? [] : [428]);
   }
 
   prepareAccept(mandateId: string, actorNonce = "0", authorizationDeadline = String(Math.floor(Date.now() / 1000) + 3600)) {
@@ -72,7 +72,7 @@ export class MandateCourtClient {
       method: "POST",
       headers: { "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ actorNonce, authorizationDeadline }),
-    });
+    }, [428]);
   }
 
   acceptMandate(mandateId: string, actorAuthorization: unknown) {
@@ -100,6 +100,6 @@ export class MandateCourtClient {
       method: "POST",
       headers: { "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ grounds }),
-    });
+    }, [428]);
   }
 }
