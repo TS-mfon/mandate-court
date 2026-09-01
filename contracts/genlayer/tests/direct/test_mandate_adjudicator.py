@@ -123,3 +123,57 @@ def test_records_mutated_evidence_hash_mismatch(direct_vm, direct_deploy, direct
     )
     result = contract.submit_case("mutable-evidence", *payload("mutable-evidence"), "GENERAL_V1")
     assert result["judgment"]["verdict"] == "UNDETERMINED"
+
+
+def test_large_judgment_remains_valid_structured_json(direct_vm, direct_deploy, direct_alice):
+    direct_vm.sender = direct_alice
+    contract = direct_deploy("contracts/genlayer/mandate_adjudicator.py", address(direct_alice))
+    case_id = "large-structured-judgment"
+    weights = [312] * 31 + [328]
+    locked_mandate = {
+        "mandateId": case_id,
+        "objective": "Verify a large criterion set without corrupting stored JSON.",
+        "acceptanceCriteria": [
+            {"id": f"C{index + 1}", "weightBps": weight, "critical": False, "requirement": f"Requirement {index + 1}"}
+            for index, weight in enumerate(weights)
+        ],
+    }
+    delivery_bundle = {"manifest": manifest(case_id), "snapshots": []}
+    canonical = lambda value: json.dumps(value, sort_keys=True, separators=(",", ":"))
+    digest = lambda value: "0x" + hashlib.sha256(canonical(value).encode()).hexdigest()
+    large_judgment = {
+        "verdict": "FULFILLED",
+        "confidenceBps": 9000,
+        "criteria": [
+            {
+                "id": f"C{index + 1}",
+                "result": "PASS",
+                "severity": "HIGH",
+                "evidenceRefs": ["E1"],
+                "reasonCode": "VERIFIED_REQUIREMENT",
+                "reason": "R" * 600,
+            }
+            for index in range(32)
+        ],
+        "admissibility": [{"id": "E1", "status": "ADMISSIBLE", "reason": "A" * 400}],
+        "contradictions": ["C" * 500 for _ in range(16)],
+        "materialBreaches": [],
+        "missingEvidence": [],
+        "settlementBps": 10000,
+        "appealGrounds": ["G" * 500 for _ in range(12)],
+        "summary": "S" * 1200,
+    }
+    direct_vm.mock_web(r"https://evidence\.example/.*", {"status": 200, "body": "Public fixture evidence"})
+    direct_vm.mock_llm(r".*INDEPENDENT FORENSIC ADJUDICATOR.*", json.dumps(large_judgment))
+    result = contract.submit_case(
+        case_id,
+        canonical(locked_mandate),
+        canonical(delivery_bundle),
+        digest(locked_mandate),
+        digest(delivery_bundle),
+        "GENERAL_V1",
+    )
+    stored = contract.get_case(case_id)
+    assert stored["judgment"]["verdict"] == "FULFILLED"
+    assert len(json.dumps(stored["judgment"], sort_keys=True, separators=(",", ":"))) <= 24000
+    assert len(result["judgment"]["criteria"]) == 32

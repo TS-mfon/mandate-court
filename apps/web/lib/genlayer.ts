@@ -22,16 +22,20 @@ function readClient() {
   return createClient({ chain: studionet, endpoint: process.env.GENLAYER_RPC_URL });
 }
 
-export async function readGenLayerCase(caseId: string) {
+export function configuredGenLayerContractAddress() {
   const address = process.env.GENLAYER_CONTRACT_ADDRESS as `0x${string}` | undefined;
   if (!address) throw new Error("GENLAYER_CONTRACT_ADDRESS is not configured");
+  return address;
+}
+
+export async function readGenLayerCase(caseId: string, contractAddress?: string) {
+  const address = (contractAddress ?? configuredGenLayerContractAddress()) as `0x${string}`;
   const result = await readClient().readContract({ address, functionName: "get_case", args: [caseId], jsonSafeReturn: true });
   return result as Record<string, any>;
 }
 
 export async function submitAdjudication(mandate: Record<string, any>) {
-  const address = process.env.GENLAYER_CONTRACT_ADDRESS as `0x${string}` | undefined;
-  if (!address) throw new Error("GENLAYER_CONTRACT_ADDRESS is not configured");
+  const address = configuredGenLayerContractAddress();
   return client().writeContract({
     address,
     functionName: "submit_case",
@@ -47,9 +51,8 @@ export async function submitAdjudication(mandate: Record<string, any>) {
   });
 }
 
-export async function judgmentProgress(transactionId: `0x${string}`, mandateId: string) {
-  const address = process.env.GENLAYER_CONTRACT_ADDRESS as `0x${string}` | undefined;
-  if (!address) throw new Error("GENLAYER_CONTRACT_ADDRESS is not configured");
+export async function judgmentProgress(transactionId: `0x${string}`, mandateId: string, contractAddress?: string) {
+  const address = (contractAddress ?? configuredGenLayerContractAddress()) as `0x${string}`;
   const court = client();
   const receipt = await court.getTransaction({ hash: transactionId as any });
   const status = String(receipt.statusName ?? receipt.status).toUpperCase();

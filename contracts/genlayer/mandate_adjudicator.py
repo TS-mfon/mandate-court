@@ -21,6 +21,7 @@ MAX_MANIFEST_CHARS = 18000
 MAX_EVIDENCE_ITEMS = 16
 MAX_SOURCE_CHARS = 12000
 MAX_TOTAL_SOURCE_CHARS = 64000
+MAX_JUDGMENT_CHARS = 24000
 
 
 COURT_CONSTITUTION_V1 = """
@@ -272,6 +273,29 @@ def _normalize_judgment(raw, mandate: dict, sources: list[dict]) -> dict:
     }
 
 
+def _compact_judgment(judgment: dict) -> tuple[dict, str]:
+    compact = json.loads(_canonical_json(judgment))
+    limits = (
+        (600, 400, 500, 1200),
+        (320, 220, 240, 700),
+        (180, 120, 120, 400),
+        (96, 80, 80, 240),
+    )
+    for criterion_reason, admissibility_reason, list_item, summary in limits:
+        for criterion in compact.get("criteria", []):
+            criterion["reasonCode"] = str(criterion.get("reasonCode", ""))[:64]
+            criterion["reason"] = str(criterion.get("reason", ""))[:criterion_reason]
+        for ruling in compact.get("admissibility", []):
+            ruling["reason"] = str(ruling.get("reason", ""))[:admissibility_reason]
+        for key in ("contradictions", "materialBreaches", "missingEvidence", "appealGrounds"):
+            compact[key] = [str(value)[:list_item] for value in compact.get(key, [])]
+        compact["summary"] = str(compact.get("summary", ""))[:summary]
+        canonical = _canonical_json(compact)
+        if len(canonical) <= MAX_JUDGMENT_CHARS:
+            return compact, canonical
+    raise gl.vm.UserError("[LLM_ERROR] Structured judgment exceeds storage limit")
+
+
 class MandateAdjudicator(gl.Contract):
     owner: Address
     operator: Address
@@ -339,7 +363,7 @@ class MandateAdjudicator(gl.Contract):
             "or settlement math inconsistent with criterion weights. Concise wording may differ."
         )
         judgment = gl.eq_principle.prompt_comparative(leader_fn, principle=principle)
-        canonical = _canonical_json(judgment)
+        judgment, canonical = _compact_judgment(judgment)
         now = str(gl.message_raw["datetime"])
         judgment_hash = _keccak_hex(canonical)
         report_hash = _keccak_hex(str(judgment.get("summary", "")))
@@ -348,7 +372,7 @@ class MandateAdjudicator(gl.Contract):
             mandate_hash=mandate_hash,
             delivery_hash=delivery_hash,
             policy=policy,
-            judgment_json=canonical[:24000],
+            judgment_json=canonical,
             judgment_hash=judgment_hash,
             report_hash=report_hash,
             status="FINALIZED",

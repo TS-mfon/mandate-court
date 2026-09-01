@@ -1,7 +1,7 @@
 import { ApiError, apiError } from "@/lib/auth";
 import { relayAccept, relayCreate, relayDelivery, relayLinkCase, relayRecordAccepted, relayRecordAppeal, relayRecordFinalized, relaySettlement, relayStatus, relayTerminal, type RelayProvider } from "@/lib/base-relay";
 import { acquireProcessorLease, database, releaseProcessorLease } from "@/lib/db";
-import { appealJudgment, judgmentProgress, submitAdjudication } from "@/lib/genlayer";
+import { appealJudgment, configuredGenLayerContractAddress, judgmentProgress, submitAdjudication } from "@/lib/genlayer";
 import { enqueueWebhook } from "@/lib/webhooks";
 import { terminalRelayError } from "@/lib/processor-errors";
 import { mandateTransactionFields } from "@/lib/relay-transactions";
@@ -109,7 +109,7 @@ export async function processProtocolQueue() {
         } else if (job.type === "GENLAYER_ADJUDICATION") {
           if (!mandate.genlayerTransactionId) {
             const transactionId = await submitAdjudication(mandate);
-            await db.collection("mandates").updateOne({ _id: mandate._id }, { $set: { genlayerTransactionId: transactionId, status: "UNDER_REVIEW", updatedAt: new Date() } });
+            await db.collection("mandates").updateOne({ _id: mandate._id }, { $set: { genlayerTransactionId: transactionId, genlayerContractAddress: configuredGenLayerContractAddress(), status: "UNDER_REVIEW", updatedAt: new Date() } });
             await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: "SUBMITTED", genlayerTransactionId: transactionId, nextAttemptAt: new Date(Date.now() + 20_000), updatedAt: new Date() } });
             await db.collection("relayJobs").insertOne({ operationId: job.operationId, type: "LINK_CASE", mandateId: mandate.mandateId, status: "PENDING", attempts: 0, nextAttemptAt: new Date(), createdAt: new Date() });
           } else {
@@ -119,7 +119,7 @@ export async function processProtocolQueue() {
               results.push({ job: job._id, status: "WAITING_FOR_APPEAL_SUBMISSION" });
               continue;
             }
-            const finality = await judgmentProgress(mandate.genlayerTransactionId, mandate.mandateId);
+            const finality = await judgmentProgress(mandate.genlayerTransactionId, mandate.mandateId, mandate.genlayerContractAddress);
             const stored = finality.stored as Record<string, any> | undefined;
             if (finality.accepted && stored?.judgment_hash && !mandate.acceptedJudgmentHash) {
               await db.collection("mandates").updateOne({ _id: mandate._id }, { $set: { acceptedJudgment: stored.judgment, acceptedJudgmentHash: stored.judgment_hash, status: String(mandate.status) === "APPEALED" ? "APPEALED" : "APPEAL_WINDOW", acceptedAt: new Date(), updatedAt: new Date() } });
