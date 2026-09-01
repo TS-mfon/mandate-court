@@ -1,6 +1,7 @@
 import { agentRegistrationSchema } from "@mandate-court/schemas";
 import { apiError, authenticate, requireScope } from "@/lib/auth";
 import { database } from "@/lib/db";
+import { publicAgentProjection } from "@/lib/public-projections";
 
 export const runtime = "nodejs";
 
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
     const skill = url.searchParams.get("skill");
     const db = await database();
     const query = skill ? { skills: skill } : {};
-    const agents = await db.collection("agents").find(query, { projection: { _id: 0 } }).limit(100).toArray();
+    const agents = await db.collection("agents").find(query, { projection: publicAgentProjection }).limit(100).toArray();
     return Response.json({ agents });
   } catch (error) {
     return apiError(error);

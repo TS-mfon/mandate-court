@@ -675,7 +675,7 @@ pnpm --filter @mandate-court/web build
 
 Required secrets are documented in `.env.example`. Never expose court, webhook, or GenLayer private keys through `NEXT_PUBLIC_*` variables.
 
-The Hobby-compatible deployment schedules `/api/internal/process` once daily as a safety retry. During demos and active test runs, invoke the endpoint manually with `Authorization: Bearer $CRON_SECRET` after queued actions. A production Vercel plan can increase the schedule frequency without changing processor semantics.
+The Hobby-compatible deployment schedules `/api/internal/process` once daily as a safety retry. Normal agent operation does not wait for that cron: every authenticated `GET /api/v1/operations/{operationId}` poll advances one bounded processor pass while the operation still has pending jobs. Agents should poll at the documented interval until the derived operation status is `COMPLETED` or `FAILED`. The lease prevents overlapping polls from double-processing work, and a production Vercel plan can increase the independent cron frequency without changing processor semantics.
 
 ### MongoDB Atlas
 

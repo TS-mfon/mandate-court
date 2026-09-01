@@ -5,6 +5,7 @@ import { actionHash, actorTypedData, createPayloadHash, currentActorNonce, manda
 import { canonicalHash, identifier } from "@/lib/crypto";
 import { database } from "@/lib/db";
 import { beginOperation } from "@/lib/operations";
+import { mandateSummaryProjection } from "@/lib/public-projections";
 
 export const runtime = "nodejs";
 
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
     if (policy) query.policy = policy;
     if (assignedTo) query.providerAgentId = assignedTo;
     const db = await database();
-    const mandates = await db.collection("mandates").find(query, { projection: { _id: 0, actorAuthorization: 0, manifest: 0, snapshots: 0, deliveryPreparation: 0, settlementAttestation: 0 } }).sort({ createdAt: -1 }).limit(100).toArray();
+    const mandates = await db.collection("mandates").find(query, { projection: mandateSummaryProjection }).sort({ createdAt: -1 }).limit(100).toArray();
     return Response.json({ mandates });
   } catch (error) {
     return apiError(error);

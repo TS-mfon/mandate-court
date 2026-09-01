@@ -8,6 +8,8 @@ import { successfulFinalizedExecution } from "../apps/web/lib/genlayer";
 import { deliveryTimestampIsCurrent } from "../apps/web/lib/delivery-time";
 import { terminalRelayError } from "../apps/web/lib/processor-errors";
 import { compactCaseId } from "../apps/web/lib/case-display";
+import { mandateTransactionFields } from "../apps/web/lib/relay-transactions";
+import { mandateSummaryProjection, publicAgentProjection } from "../apps/web/lib/public-projections";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -107,6 +109,32 @@ describe("relay retry classification", () => {
 describe("case display identity", () => {
   it("keeps long protocol identifiers out of headings", () => {
     expect(compactCaseId("MC_940c1ce705f84b0c894c0c54b84bed3b")).toBe("MC-940C1CE7");
+  });
+});
+
+describe("relay transaction persistence", () => {
+  it("keeps lifecycle transaction hashes in distinct fields", () => {
+    expect(mandateTransactionFields("CREATE_MANDATE", "0xcreate")).toMatchObject({ baseTransactionHash: "0xcreate", createTransactionHash: "0xcreate" });
+    expect(mandateTransactionFields("ACCEPT_MANDATE", "0xaccept")).toEqual({ acceptTransactionHash: "0xaccept" });
+    expect(mandateTransactionFields("SUBMIT_DELIVERY", "0xdelivery")).toEqual({ deliveryTransactionHash: "0xdelivery" });
+    expect(mandateTransactionFields("SETTLEMENT", "0xsettle")).toMatchObject({ settlementTransactionHash: "0xsettle" });
+  });
+
+  it("does not write undefined transaction fields", () => {
+    expect(mandateTransactionFields("CREATE_MANDATE")).toEqual({});
+    expect(mandateTransactionFields("UNKNOWN", "0xhash")).toEqual({});
+  });
+});
+
+describe("public API projections", () => {
+  it("never exposes signed authorization or settlement attestation material", () => {
+    for (const field of ["actorAuthorization", "fundingAuthorization", "acceptAuthorization", "deliveryAuthorization", "settlementAttestation", "deliveryPreparation"]) {
+      expect(mandateSummaryProjection[field as keyof typeof mandateSummaryProjection]).toBe(0);
+    }
+  });
+
+  it("keeps agent callback endpoints private", () => {
+    expect(publicAgentProjection.callbackUrl).toBe(0);
   });
 });
 

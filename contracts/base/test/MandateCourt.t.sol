@@ -123,6 +123,95 @@ contract MandateCourtTest {
         registry.acceptMandate(intent, authorization, actorSig, courtSig);
     }
 
+    function testPrincipalCanCancelUnacceptedMandateAndRecoverEscrow() public {
+        _create(address(0));
+        bytes32 payloadHash = keccak256(abi.encode(MANDATE_ID));
+        (CourtTypes.ActorIntent memory intent, CourtTypes.CourtAuthorization memory authorization) =
+            _intent(principal, 1, 1, registry.CANCEL_ACTION(), payloadHash);
+        registry.cancelMandate(
+            intent,
+            authorization,
+            _signIntent(PRINCIPAL_KEY, intent),
+            _signAuthorization(authorization)
+        );
+
+        MandateRegistry.Mandate memory mandate = registry.getMandate(MANDATE_ID);
+        _assertEq(uint256(mandate.status), uint256(CourtTypes.MandateStatus.Cancelled));
+        _assertEq(usdc.balanceOf(principal), 100_000_000);
+        bytes32 acceptPayloadHash = keccak256(abi.encode(MANDATE_ID, provider));
+        (CourtTypes.ActorIntent memory acceptIntent, CourtTypes.CourtAuthorization memory acceptAuthorization) =
+            _intent(provider, 0, 2, registry.ACCEPT_ACTION(), acceptPayloadHash);
+        bytes memory acceptActorSignature = _signIntent(PROVIDER_KEY, acceptIntent);
+        bytes memory acceptCourtSignature = _signAuthorization(acceptAuthorization);
+        vm.expectRevert();
+        registry.acceptMandate(
+            acceptIntent, acceptAuthorization, acceptActorSignature, acceptCourtSignature
+        );
+    }
+
+    function testExpiredActorAuthorizationReverts() public {
+        uint64 acceptanceDeadline = uint64(block.timestamp + 1 days);
+        uint64 deliveryDeadline = uint64(block.timestamp + 3 days);
+        bytes32 payloadHash = keccak256(
+            abi.encode(
+                address(0),
+                MANDATE_HASH,
+                POLICY_HASH,
+                uint256(20_000_000),
+                acceptanceDeadline,
+                deliveryDeadline
+            )
+        );
+        (CourtTypes.ActorIntent memory intent, CourtTypes.CourtAuthorization memory authorization) =
+            _intent(principal, 0, 0, registry.CREATE_ACTION(), payloadHash);
+        intent.deadline = block.timestamp - 1;
+        authorization.deadline = block.timestamp - 1;
+        bytes memory actorSignature = _signIntent(PRINCIPAL_KEY, intent);
+        bytes memory courtSignature = _signAuthorization(authorization);
+
+        vm.expectRevert();
+        registry.createMandate(
+            intent,
+            authorization,
+            actorSignature,
+            courtSignature,
+            address(0),
+            MANDATE_HASH,
+            POLICY_HASH,
+            20_000_000,
+            acceptanceDeadline,
+            deliveryDeadline,
+            CourtTypes.FundingAuthorization({
+                validAfter: 0,
+                validBefore: block.timestamp + 1 hours,
+                nonce: keccak256("expired-funding"),
+                v: 27,
+                r: bytes32(uint256(1)),
+                s: bytes32(uint256(2))
+            })
+        );
+    }
+
+    function testActorNonceReplayReverts() public {
+        _create(address(0));
+        _accept();
+        bytes32 deliveryHash = keccak256("replayed-delivery");
+        bytes32 payloadHash = keccak256(abi.encode(MANDATE_ID, deliveryHash));
+        (CourtTypes.ActorIntent memory intent, CourtTypes.CourtAuthorization memory authorization) =
+            _intent(provider, 0, 2, registry.SUBMIT_ACTION(), payloadHash);
+        bytes memory actorSignature = _signIntent(PROVIDER_KEY, intent);
+        bytes memory courtSignature = _signAuthorization(authorization);
+
+        vm.expectRevert();
+        registry.submitDelivery(
+            intent,
+            authorization,
+            actorSignature,
+            courtSignature,
+            deliveryHash
+        );
+    }
+
     function testDuplicateSettlementReverts() public {
         _create(address(0));
         _accept();
@@ -180,6 +269,24 @@ contract MandateCourtTest {
         bytes memory signature = _signJudgment(judgment);
         vm.expectRevert();
         adapter.executeFinalJudgment(judgment, signature);
+    }
+
+    function testSettlementRejectsOutOfRangeProviderAward() public {
+        _create(address(0));
+        _accept();
+        bytes32 deliveryHash = keccak256("delivery");
+        _submit(deliveryHash);
+        CourtTypes.FinalJudgment memory judgment = _judgment(deliveryHash, 10_001, 13);
+        _finalize(judgment);
+        bytes memory signature = _signJudgment(judgment);
+
+        vm.expectRevert();
+        adapter.executeFinalJudgment(judgment, signature);
+    }
+
+    function testOnlyCourtCanMutateDisputeState() public {
+        vm.expectRevert();
+        disputes.linkCase(MANDATE_ID, keccak256("unauthorized"));
     }
 
     function _judgment(bytes32 deliveryHash, uint16 providerBps, uint256 nonce)

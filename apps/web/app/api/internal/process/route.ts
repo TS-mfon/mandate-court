@@ -4,6 +4,7 @@ import { acquireProcessorLease, database, releaseProcessorLease } from "@/lib/db
 import { appealJudgment, judgmentProgress, submitAdjudication } from "@/lib/genlayer";
 import { enqueueWebhook } from "@/lib/webhooks";
 import { terminalRelayError } from "@/lib/processor-errors";
+import { mandateTransactionFields } from "@/lib/relay-transactions";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,8 +14,7 @@ function authorized(request: Request) {
   return Boolean(process.env.CRON_SECRET && token === process.env.CRON_SECRET);
 }
 
-export async function GET(request: Request) {
-  if (!authorized(request)) return apiError(new ApiError(401, "Invalid cron authorization"));
+export async function processProtocolQueue() {
   try {
     const db = await database();
     const leaseOwner = await acquireProcessorLease(db);
@@ -36,8 +36,15 @@ export async function GET(request: Request) {
           }
           if (String(status.taskState) !== "ExecSuccess") throw new Error(`${status.provider} task ${status.taskState}`);
           const nextStatus = job.type === "CREATE_MANDATE" ? "OPEN" : job.type === "ACCEPT_MANDATE" ? "ACTIVE" : job.type === "SUBMIT_DELIVERY" ? "SUBMITTED" : job.type === "SETTLEMENT" ? "SETTLED" : undefined;
-          await db.collection("mandates").updateOne({ _id: mandate._id }, { $set: { ...(nextStatus ? { status: nextStatus } : {}), baseTransactionHash: "transactionHash" in status ? status.transactionHash : undefined, updatedAt: new Date() } });
-          await db.collection("relayJobs").updateOne({ _id: job._id }, { $set: { status: "COMPLETED", lastStatus: status, updatedAt: new Date() }, $unset: { lastError: "" } });
+          const transactionHash = status.transactionHash;
+          await db.collection("mandates").updateOne(
+            { _id: mandate._id },
+            { $set: { ...(nextStatus ? { status: nextStatus } : {}), ...mandateTransactionFields(String(job.type), transactionHash), updatedAt: new Date() } },
+          );
+          await db.collection("relayJobs").updateOne(
+            { _id: job._id },
+            { $set: { status: "COMPLETED", lastStatus: status, ...(transactionHash ? { transactionHash } : {}), updatedAt: new Date() }, $unset: { lastError: "" } },
+          );
           if (job.type === "SUBMIT_DELIVERY") await db.collection("relayJobs").updateOne({ mandateId: job.mandateId, type: "GENLAYER_ADJUDICATION" }, { $set: { status: "PENDING", nextAttemptAt: new Date() } });
           if (job.type === "CREATE_MANDATE" && mandate.providerAgentId) {
             await enqueueWebhook(mandate.providerAgentId, "mandate.assigned", { mandateId: mandate.mandateId, mandateUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}`, acceptUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}/accept` });
@@ -186,4 +193,9 @@ export async function GET(request: Request) {
   } catch (error) {
     return apiError(error);
   }
+}
+
+export async function GET(request: Request) {
+  if (!authorized(request)) return apiError(new ApiError(401, "Invalid cron authorization"));
+  return processProtocolQueue();
 }
