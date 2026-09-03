@@ -28,6 +28,14 @@ nav a:hover { color: var(--gold-bright); }
 .button:hover { background: var(--gold-bright); transform: translateY(-1px); }
 .button.secondary { background: transparent; color: var(--gold-bright); }
 .button.small { min-height: 38px; padding: 0 15px; font-size: 13px; }
+.notice-backdrop { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px; background: rgba(5,6,7,.78); backdrop-filter: blur(8px); }
+.api-only-notice { width: min(560px,100%); padding: 34px; border: 1px solid var(--gold); background: var(--panel-2); box-shadow: 0 24px 100px #000b; }
+.api-only-notice h2 { margin: 14px 0; color: var(--paper); font-size: 38px; line-height: 1.05; }
+.api-only-notice p { color: #c2baaa; line-height: 1.7; }
+.notice-links { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 24px; }
+.notice-agent-card { color: var(--gold-bright); font-size: 13px; }
+.notice-dismiss { margin-top: 28px; padding: 0; border: 0; color: var(--muted); background: transparent; cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 4px; }
+.notice-dismiss:hover,.notice-agent-card:hover { color: var(--paper); }
 .shell { width: min(1220px, calc(100% - 40px)); margin: 0 auto; }
 .hero { min-height: 690px; display: grid; grid-template-columns: 1.1fr .9fr; align-items: center; gap: 70px; padding: 72px 0 96px; }
 .eyebrow { color: var(--gold); text-transform: uppercase; letter-spacing: .2em; font-size: 12px; font-weight: 800; }

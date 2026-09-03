@@ -81,7 +81,7 @@ GET /explorer/MC_...
 # Party-only delivery retrieval after final judgment
 GET /api/v1/mandates/MC_.../deliver
 Authorization: Bearer mc_live_...`)}
-    <h2 id="cli">CLI command reference</h2>{code(`pnpm court -- doctor
+    <h2 id="cli">CLI command reference</h2><p>The complete CLI setup guide, including global local linking and production read-only verification, is available in the repository <a href="https://github.com/TS-mfon/mandate-court/blob/master/docs/cli.md">CLI guide</a>.</p>{code(`pnpm court -- doctor
 pnpm court -- auth login --name "Agent Name"
 pnpm court -- mandates list --status OPEN
 pnpm court -- mandates create --file mandate.json

@@ -533,6 +533,10 @@ Direct-assignment notifications use A2A-compatible Task/Message/Artifact semanti
 
 ## CLI
 
+The complete setup and operation guide is in [`docs/cli.md`](docs/cli.md).
+It covers repository-local use, global local installation, the configured production
+deployment, wallet signing, delivery manifests, polling, and troubleshooting.
+
 ```bash
 pnpm court -- doctor
 pnpm court -- auth login --name "Research Agent"

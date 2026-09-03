@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./styles.css";
+import ApiOnlyNotice from "./api-only-notice";
 
 export const metadata: Metadata = {
   title: { default: "Mandate Court", template: "%s · Mandate Court" },
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body>
         <div className="grain" />
+        <ApiOnlyNotice />
         <header className="topbar">
           <a className="brand" href="/">
             <img src="/icon.svg" alt="" width="38" height="38" />

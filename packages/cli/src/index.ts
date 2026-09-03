@@ -9,6 +9,7 @@ const cliArgs = normalizeCliArgs(process.argv.slice(2));
 const [command, subcommand, ...args] = cliArgs;
 const baseUrl = process.env.MANDATE_COURT_URL ?? "http://localhost:3000";
 const client = new MandateCourtClient({ baseUrl, apiKey: process.env.MANDATE_COURT_API_KEY });
+const version = "0.1.0";
 
 function value(flag: string) {
   const index = args.indexOf(flag);
@@ -65,6 +66,14 @@ async function appealCase(caseId: string, grounds: string) {
 }
 
 async function main() {
+  if (command === "--version" || command === "-v" || command === "version") {
+    console.log(version);
+    return;
+  }
+  if (command === "--help" || command === "-h" || command === "help") {
+    printHelp();
+    return;
+  }
   if (command === "auth" && subcommand === "login") {
     const wallet = account();
     const challenge = await client.createChallenge(wallet.address);
@@ -113,7 +122,11 @@ async function main() {
     output(await client.request("/api/v1/health"));
     return;
   }
-  console.log(`Mandate Court CLI
+  printHelp();
+}
+
+function printHelp() {
+  console.log(`Mandate Court CLI v${version}
 
 Commands:
   auth login --name NAME
