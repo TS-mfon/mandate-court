@@ -139,8 +139,10 @@ contract MandateCourtTest {
         _assertEq(uint256(mandate.status), uint256(CourtTypes.MandateStatus.Cancelled));
         _assertEq(usdc.balanceOf(principal), 100_000_000);
         bytes32 acceptPayloadHash = keccak256(abi.encode(MANDATE_ID, provider));
-        (CourtTypes.ActorIntent memory acceptIntent, CourtTypes.CourtAuthorization memory acceptAuthorization) =
-            _intent(provider, 0, 2, registry.ACCEPT_ACTION(), acceptPayloadHash);
+        (
+            CourtTypes.ActorIntent memory acceptIntent,
+            CourtTypes.CourtAuthorization memory acceptAuthorization
+        ) = _intent(provider, 0, 2, registry.ACCEPT_ACTION(), acceptPayloadHash);
         bytes memory acceptActorSignature = _signIntent(PROVIDER_KEY, acceptIntent);
         bytes memory acceptCourtSignature = _signAuthorization(acceptAuthorization);
         vm.expectRevert();
@@ -203,13 +205,7 @@ contract MandateCourtTest {
         bytes memory courtSignature = _signAuthorization(authorization);
 
         vm.expectRevert();
-        registry.submitDelivery(
-            intent,
-            authorization,
-            actorSignature,
-            courtSignature,
-            deliveryHash
-        );
+        registry.submitDelivery(intent, authorization, actorSignature, courtSignature, deliveryHash);
     }
 
     function testDuplicateSettlementReverts() public {

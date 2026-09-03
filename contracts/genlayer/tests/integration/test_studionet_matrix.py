@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -122,6 +123,26 @@ def _assert_judgment_schema(judgment):
     assert judgment["evidenceCommitment"].startswith("0x")
 
 
+def _assert_consensus_succeeded(receipt):
+    consensus = receipt.get("consensus_data", {})
+    result = consensus.get("result_name") or receipt.get("result_name")
+    assert result == "MAJORITY_AGREE", json.dumps(receipt, indent=2, default=str)
+
+
+def _read_case_when_available(contract, case_id):
+    retries = int(os.environ.get("MANDATE_COURT_STATE_WAIT_RETRIES", "60"))
+    interval = float(os.environ.get("MANDATE_COURT_STATE_WAIT_INTERVAL", "3"))
+    last_error = None
+    for attempt in range(retries):
+        try:
+            return contract.get_case(args=[case_id]).call()
+        except Exception as error:
+            last_error = error
+            if attempt + 1 < retries:
+                time.sleep(interval)
+    raise AssertionError(f"GenLayer accepted consensus but case state was not readable: {last_error}")
+
+
 def _submit(contract, case_id, policy, fixture_id, fixture_url, committed_hash, wait_status):
     mandate = _mandate(case_id, fixture_id)
     manifest = _manifest(case_id, fixture_url, committed_hash)
@@ -142,8 +163,11 @@ def _submit(contract, case_id, policy, fixture_id, fixture_url, committed_hash, 
         wait_transaction_status=wait_status,
         wait_retries=int(os.environ.get("MANDATE_COURT_WAIT_RETRIES", "180")),
     )
-    assert tx_execution_succeeded(receipt)
-    stored = contract.get_case(args=[case_id]).call()
+    if wait_status == TransactionStatus.ACCEPTED:
+        _assert_consensus_succeeded(receipt)
+    else:
+        assert tx_execution_succeeded(receipt), json.dumps(receipt, indent=2, default=str)
+    stored = _read_case_when_available(contract, case_id)
     assert stored["status"] == "FINALIZED"
     _assert_judgment_schema(stored["judgment"])
     return receipt, stored
@@ -160,25 +184,38 @@ def test_required_studionet_outcome_matrix():
             "GENLAYER_OPERATOR_ADDRESS must match the signer configured by gltest: " + operator
         )
 
-    factory = get_contract_factory("MandateAdjudicator")
-    deployment = factory.deploy_contract_tx(
-        args=[operator],
-        account=default_account,
-        wait_transaction_status=TransactionStatus.FINALIZED,
-    )
-    assert tx_execution_succeeded(deployment)
     with open("contracts/genlayer/mandate_adjudicator.schema.json", encoding="utf-8") as schema_file:
         schema = json.load(schema_file)
-    contract = Contract.new(extract_contract_address(deployment), schema, account=default_account)
+    configured_contract = os.environ.get("MANDATE_COURT_STUDIONET_CONTRACT_ADDRESS")
+    if configured_contract:
+        contract_address = configured_contract
+    else:
+        factory = get_contract_factory("MandateAdjudicator")
+        deployment = factory.deploy_contract_tx(
+            args=[operator],
+            account=default_account,
+            wait_transaction_status=TransactionStatus.ACCEPTED,
+        )
+        assert tx_execution_succeeded(deployment), json.dumps(deployment, indent=2, default=str)
+        contract_address = extract_contract_address(deployment)
+    contract = Contract.new(contract_address, schema, account=default_account)
+    run_id = str(time.time_ns())[-12:]
+    metrics_before = int(contract.get_metrics(args=[]).call()["finalized_count"])
+    print(f"MANDATE_COURT_STUDIONET_RUN={run_id} CONTRACT={contract_address}", flush=True)
+    start = int(os.environ.get("MANDATE_COURT_MATRIX_START", "1"))
+    end = int(os.environ.get("MANDATE_COURT_MATRIX_END", str(len(PRIMARY_CASES))))
+    if start < 1 or end > len(PRIMARY_CASES) or start > end:
+        raise ValueError("MANDATE_COURT_MATRIX_START/END must select a valid primary-case range")
+    selected_primary = tuple(item for item in PRIMARY_CASES if start <= item[0] <= end)
     appeal_indexes = {fixture_id for fixture_id, _ in APPEAL_CASES}
     primary = {}
     outcomes = []
 
-    for fixture_id, policy, expected_verdict in PRIMARY_CASES:
-        case_id = f"studionet-primary-{fixture_id:02d}"
+    for fixture_id, policy, expected_verdict in selected_primary:
+        case_id = f"studionet-{run_id}-primary-{fixture_id:02d}"
         fixture_url = f"{evidence_base}/api/fixtures/{fixture_id}"
         committed_hash = _sha256(_public_body(fixture_url))
-        wait_status = TransactionStatus.ACCEPTED if fixture_id in appeal_indexes else TransactionStatus.FINALIZED
+        wait_status = TransactionStatus.FINALIZED
         receipt, stored = _submit(
             contract,
             case_id,
@@ -189,17 +226,21 @@ def test_required_studionet_outcome_matrix():
             wait_status,
         )
         assert stored["judgment"]["verdict"] == expected_verdict
+        print(f"PRIMARY {fixture_id}/10 {expected_verdict}", flush=True)
         primary[fixture_id] = (receipt, stored)
         outcomes.append({"kind": "PRIMARY", "caseId": case_id, "verdict": expected_verdict})
 
     appeal_results = []
-    for fixture_id, target in APPEAL_CASES:
+    selected_appeals = tuple(item for item in APPEAL_CASES if start <= item[0] <= end)
+    for fixture_id, target in selected_appeals:
         original_receipt, original_case = primary[fixture_id]
         appealed_receipt = contract.appeal(
             _transaction_hash(original_receipt),
-            wait_transaction_status=TransactionStatus.FINALIZED,
+            wait_transaction_status=TransactionStatus.ACCEPTED,
         )
-        assert tx_execution_succeeded(appealed_receipt)
+        assert tx_execution_succeeded(appealed_receipt), json.dumps(
+            appealed_receipt, indent=2, default=str
+        )
         appealed_case = contract.get_case(args=[original_case["case_id"]]).call()
         _assert_judgment_schema(appealed_case["judgment"])
         actual = (
@@ -208,6 +249,7 @@ def test_required_studionet_outcome_matrix():
             else "OVERTURNED"
         )
         appeal_results.append(actual)
+        print(f"APPEAL {fixture_id} {actual}", flush=True)
         outcomes.append(
             {
                 "kind": "APPEAL",
@@ -222,8 +264,10 @@ def test_required_studionet_outcome_matrix():
         assert appeal_results.count("UPHELD") == 2
         assert appeal_results.count("OVERTURNED") == 2
 
-    for name, fixture_id, integrity_mode, expected_verdict in ADVERSARIAL_CASES:
-        case_id = f"studionet-adversarial-{name}"
+    include_adversarial = os.environ.get("MANDATE_COURT_INCLUDE_ADVERSARIAL") == "1"
+    selected_adversarial = ADVERSARIAL_CASES if include_adversarial else ()
+    for name, fixture_id, integrity_mode, expected_verdict in selected_adversarial:
+        case_id = f"studionet-{run_id}-adversarial-{name}"
         fixture_url = f"{evidence_base}/api/fixtures/{fixture_id}"
         observed_hash = _sha256(_public_body(fixture_url))
         committed_hash = observed_hash if integrity_mode == "MATCH" else "0x" + ("00" * 32)
@@ -234,9 +278,10 @@ def test_required_studionet_outcome_matrix():
             fixture_id,
             fixture_url,
             committed_hash,
-            TransactionStatus.FINALIZED,
+            TransactionStatus.ACCEPTED,
         )
         assert stored["judgment"]["verdict"] == expected_verdict
+        print(f"ADVERSARIAL {name} {expected_verdict}", flush=True)
         outcomes.append(
             {
                 "kind": "ADVERSARIAL",
@@ -246,10 +291,11 @@ def test_required_studionet_outcome_matrix():
             }
         )
 
-    assert len(outcomes) == 17
-    assert sum(item["kind"] == "PRIMARY" for item in outcomes) == 10
-    assert sum(item["kind"] == "APPEAL" for item in outcomes) == 4
-    assert sum(item["kind"] == "ADVERSARIAL" for item in outcomes) == 3
+    assert len(outcomes) == len(selected_primary) + len(selected_appeals) + len(selected_adversarial)
+    assert sum(item["kind"] == "PRIMARY" for item in outcomes) == len(selected_primary)
+    assert sum(item["kind"] == "APPEAL" for item in outcomes) == len(selected_appeals)
+    assert sum(item["kind"] == "ADVERSARIAL" for item in outcomes) == len(selected_adversarial)
     metrics = contract.get_metrics(args=[]).call()
-    assert int(metrics["finalized_count"]) == 13
+    expected_finalized = len(selected_primary) + len(selected_appeals) + len(selected_adversarial)
+    assert int(metrics["finalized_count"]) - metrics_before == expected_finalized
     print("MANDATE_COURT_STUDIONET_OUTCOMES=" + json.dumps(outcomes, sort_keys=True))

@@ -9,30 +9,36 @@ interface IMandateEscrowSettlement {
 }
 
 interface IMandateRegistrySettlement {
-    function getMandate(bytes32 mandateId) external view returns (
-        address principal,
-        address provider,
-        bytes32 mandateHash,
-        bytes32 policyHash,
-        bytes32 deliveryHash,
-        uint256 amount,
-        uint64 acceptanceDeadline,
-        uint64 deliveryDeadline,
-        CourtTypes.MandateStatus status
-    );
+    function getMandate(bytes32 mandateId)
+        external
+        view
+        returns (
+            address principal,
+            address provider,
+            bytes32 mandateHash,
+            bytes32 policyHash,
+            bytes32 deliveryHash,
+            uint256 amount,
+            uint64 acceptanceDeadline,
+            uint64 deliveryDeadline,
+            CourtTypes.MandateStatus status
+        );
 }
 
 interface IDisputeRegistrySettlement {
-    function getCase(bytes32 mandateId) external view returns (
-        bytes32 genlayerTransactionId,
-        bytes32 acceptedVerdictHash,
-        bytes32 finalizedVerdictHash,
-        bytes32 principalAppealHash,
-        bytes32 providerAppealHash,
-        bool principalAppealed,
-        bool providerAppealed,
-        bool finalized
-    );
+    function getCase(bytes32 mandateId)
+        external
+        view
+        returns (
+            bytes32 genlayerTransactionId,
+            bytes32 acceptedVerdictHash,
+            bytes32 finalizedVerdictHash,
+            bytes32 principalAppealHash,
+            bytes32 providerAppealHash,
+            bool principalAppealed,
+            bool providerAppealed,
+            bool finalized
+        );
 }
 
 contract SettlementAdapter is SignatureVerifier {
@@ -70,14 +76,18 @@ contract SettlementAdapter is SignatureVerifier {
     }
 
     function setMandateRegistry(address registry_) external {
-        if (msg.sender != owner || address(mandateRegistry) != address(0) || registry_ == address(0)) {
+        if (
+            msg.sender != owner || address(mandateRegistry) != address(0) || registry_ == address(0)
+        ) {
             revert Unauthorized();
         }
         mandateRegistry = IMandateRegistrySettlement(registry_);
     }
 
     function setDisputeRegistry(address registry_) external {
-        if (msg.sender != owner || address(disputeRegistry) != address(0) || registry_ == address(0)) {
+        if (
+            msg.sender != owner || address(disputeRegistry) != address(0) || registry_ == address(0)
+        ) {
             revert Unauthorized();
         }
         disputeRegistry = IDisputeRegistrySettlement(registry_);
@@ -112,12 +122,20 @@ contract SettlementAdapter is SignatureVerifier {
             )
         );
         if (_recover(digest, attestation) != courtAttestor) revert InvalidSignature();
-        (, , bytes32 canonicalMandateHash, , bytes32 canonicalDeliveryHash, , , , ) = mandateRegistry.getMandate(judgment.mandateId);
-        if (canonicalMandateHash != judgment.mandateHash || canonicalDeliveryHash != judgment.deliveryHash) {
+        (,, bytes32 canonicalMandateHash,, bytes32 canonicalDeliveryHash,,,,) =
+            mandateRegistry.getMandate(judgment.mandateId);
+        if (
+            canonicalMandateHash != judgment.mandateHash
+                || canonicalDeliveryHash != judgment.deliveryHash
+        ) {
             revert CommitmentMismatch();
         }
-        (bytes32 linkedTransactionId, , bytes32 finalizedVerdictHash, , , , , bool finalized) = disputeRegistry.getCase(judgment.mandateId);
-        if (!finalized || linkedTransactionId != judgment.genlayerTransactionId || finalizedVerdictHash != judgment.verdictHash) {
+        (bytes32 linkedTransactionId,, bytes32 finalizedVerdictHash,,,,, bool finalized) =
+            disputeRegistry.getCase(judgment.mandateId);
+        if (
+            !finalized || linkedTransactionId != judgment.genlayerTransactionId
+                || finalizedVerdictHash != judgment.verdictHash
+        ) {
             revert JudgmentNotFinal();
         }
         settled[judgment.mandateId] = true;
