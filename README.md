@@ -658,6 +658,14 @@ export MANDATE_COURT_WAIT_RETRIES=180
 export MANDATE_COURT_REQUIRE_APPEAL_DISTRIBUTION=1
 ```
 
+The matrix can be split into bounded runs when hosted StudioNet latency is high.
+`MANDATE_COURT_MATRIX_START` and `MANDATE_COURT_MATRIX_END` select an inclusive
+primary-fixture range. Appeals for fixtures in that range are included. Set
+`MANDATE_COURT_INCLUDE_ADVERSARIAL=1` to add the three adversarial cases to a
+run. Use the same deployed contract address with
+`MANDATE_COURT_STUDIONET_CONTRACT_ADDRESS` when continuing a range; the
+configured `GENLAYER_OPERATOR_PRIVATE_KEY` must be the contract operator.
+
 `GENLAYER_OPERATOR_ADDRESS`, when supplied as an audit assertion, must equal the
 address derived from the configured `gltest` signer.
 

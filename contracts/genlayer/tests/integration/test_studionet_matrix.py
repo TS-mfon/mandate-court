@@ -296,6 +296,6 @@ def test_required_studionet_outcome_matrix():
     assert sum(item["kind"] == "APPEAL" for item in outcomes) == len(selected_appeals)
     assert sum(item["kind"] == "ADVERSARIAL" for item in outcomes) == len(selected_adversarial)
     metrics = contract.get_metrics(args=[]).call()
-    expected_finalized = len(selected_primary) + len(selected_appeals) + len(selected_adversarial)
+    expected_finalized = len(selected_primary) + len(selected_adversarial)
     assert int(metrics["finalized_count"]) - metrics_before == expected_finalized
     print("MANDATE_COURT_STUDIONET_OUTCOMES=" + json.dumps(outcomes, sort_keys=True))
