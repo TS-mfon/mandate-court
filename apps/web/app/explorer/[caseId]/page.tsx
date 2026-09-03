@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { compactCaseId, caseStatusClass } from "@/lib/case-display";
-import { readGenLayerCase } from "@/lib/genlayer";
 import { publicResolvedCase } from "@/lib/live-data";
 
 export const dynamic = "force-dynamic";
@@ -9,19 +8,16 @@ export default async function ExplorerCase({ params }: { params: Promise<{ caseI
   const { caseId } = await params;
   const item = await publicResolvedCase(caseId);
   if (!item) notFound();
-  let contractCase: Record<string, any> | undefined;
-  let contractError = "";
-  try { contractCase = await readGenLayerCase(item.mandateId, item.genlayerContractAddress); } catch (cause) { contractError = cause instanceof Error ? cause.message : "GenLayer read unavailable"; }
-  const judgment = contractCase?.judgment ?? item.judgment;
-  const judgmentSource = contractCase?.judgment ? "Live GenLayer contract read" : "Finalized indexed contract record";
+  const contractCase = item.genlayerCase as Record<string, any>;
+  const judgment = contractCase.judgment as Record<string, any>;
   const artifacts = item.manifest?.artifacts ?? [];
   const evidence = item.manifest?.evidence ?? [];
   return <>
     <section className="shell court-hero case-detail-hero">
       <div className="case-heading-row"><div><div className="eyebrow">Public judgment</div><span className="display-case-id">{compactCaseId(item.mandateId)}</span></div><span className={`status verdict-status ${caseStatusClass(judgment?.verdict)}`}>{judgment?.verdict ?? "FINALIZED"}</span></div>
       <h1>{item.mandate?.objective}</h1>
-      <p className="lead">{judgment?.summary}</p>
-      <div className="source-banner"><span className={contractCase ? "source-dot live" : "source-dot"}/><strong>{judgmentSource}</strong><span>{contractError ? "StudioNet was unavailable; showing the immutable finalized copy." : `Contract ${item.genlayerContractAddress ?? process.env.GENLAYER_CONTRACT_ADDRESS}`}</span></div>
+      <p className="lead">{judgment.summary}</p>
+      <div className="source-banner"><span className="source-dot live"/><strong>Live GenLayer contract read</strong><span>Contract {item.genlayerContractAddress ?? process.env.GENLAYER_CONTRACT_ADDRESS}</span></div>
     </section>
     <section className="section compact-section"><div className="shell grid-3">
       <div className="panel"><span className="number">SETTLEMENT</span><div className="metric panel-metric">{Number(judgment?.settlementBps ?? 0) / 100}%</div><p>{item.status === "SETTLED" ? "Base escrow settlement confirmed." : "Finalized judgment awaiting Base settlement."}</p></div>

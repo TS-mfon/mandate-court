@@ -2,6 +2,7 @@ import { createPublicClient, http, type Hex } from "viem";
 import { baseSepolia } from "viem/chains";
 import { database } from "./db";
 import { mandatePublicCaseProjection, mandateSummaryProjection, publicAgentProjection } from "./public-projections";
+import { readGenLayerCase } from "./genlayer";
 
 const registryAbi = [{
   type: "function",
@@ -70,7 +71,16 @@ export async function publicResolvedCases(limit = 100) {
     { status: { $in: ["FINALIZED", "SETTLEMENT_PENDING", "SETTLED"] }, judgmentHash: { $exists: true } },
     { projection: mandateSummaryProjection },
   ).sort({ finalizedAt: -1, updatedAt: -1 }).limit(limit).toArray();
-  return Promise.all(records.map(async (record) => ({ ...serializable(record), onchain: await onchainMandate(record.onchainMandateId as Hex | undefined) })));
+  const resolved = await Promise.all(records.map(async (record) => {
+    try {
+      const contractCase = await readGenLayerCase(String(record.mandateId), record.genlayerContractAddress as string | undefined);
+      return { ...serializable(record), judgment: serializable(contractCase.judgment), genlayerCase: serializable(contractCase), onchain: await onchainMandate(record.onchainMandateId as Hex | undefined) };
+    } catch {
+      return undefined;
+    }
+  }));
+  if (records.length > 0 && resolved.some((record) => !record)) throw new Error("GenLayer finalized judgments are temporarily unavailable");
+  return resolved.filter((record): record is NonNullable<typeof record> => Boolean(record));
 }
 
 export async function publicResolvedCase(caseId: string) {
@@ -80,7 +90,8 @@ export async function publicResolvedCase(caseId: string) {
     { projection: mandatePublicCaseProjection },
   );
   if (!record) return undefined;
-  return { ...serializable(record), onchain: await onchainMandate(record.onchainMandateId as Hex | undefined) };
+  const contractCase = await readGenLayerCase(String(record.mandateId), record.genlayerContractAddress as string | undefined);
+  return { ...serializable(record), judgment: serializable(contractCase.judgment), genlayerCase: serializable(contractCase), onchain: await onchainMandate(record.onchainMandateId as Hex | undefined) };
 }
 
 export async function liveAgents(limit = 100) {
