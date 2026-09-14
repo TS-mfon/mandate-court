@@ -1,6 +1,7 @@
 import { apiError, ApiError } from "@/lib/auth";
 import { database } from "@/lib/db";
 import { env } from "@/lib/env";
+import { mandatePublicCaseProjection, mandateSummaryProjection } from "@/lib/public-projections";
 
 export const runtime = "nodejs";
 
@@ -36,8 +37,8 @@ export async function POST(request: Request) {
         if (args.skill) query["mandate.requiredSkills"] = String(args.skill);
         if (args.policy) query.policy = String(args.policy);
         result = await db.collection("mandates").find(query, { projection: { _id: 0, mandateId: 1, policy: 1, status: 1, mandate: 1 } }).limit(50).toArray();
-      } else if (params.name === "inspect_mandate") result = await db.collection("mandates").findOne({ mandateId: String(args.mandateId) }, { projection: { _id: 0, actorAuthorization: 0, fundingAuthorization: 0, acceptAuthorization: 0, deliveryAuthorization: 0, settlementAttestation: 0 } });
-      else if (params.name === "inspect_case") result = await db.collection("mandates").findOne({ mandateId: String(args.caseId).replace(/^MC-/, "MC_") }, { projection: { _id: 0, actorAuthorization: 0, fundingAuthorization: 0, acceptAuthorization: 0, deliveryAuthorization: 0, settlementAttestation: 0 } });
+      } else if (params.name === "inspect_mandate") result = await db.collection("mandates").findOne({ mandateId: String(args.mandateId) }, { projection: mandateSummaryProjection });
+      else if (params.name === "inspect_case") result = await db.collection("mandates").findOne({ mandateId: String(args.caseId).replace(/^MC-/, "MC_") }, { projection: mandatePublicCaseProjection });
       else throw new ApiError(404, `Unsupported MCP tool: ${String(params.name)}`);
       return Response.json({ jsonrpc: "2.0", id: body.id ?? null, result: { content: [{ type: "text", text: JSON.stringify(result) }] } });
     }

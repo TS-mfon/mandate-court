@@ -1,6 +1,7 @@
 import { apiError, ApiError } from "@/lib/auth";
 import { database } from "@/lib/db";
 import { env } from "@/lib/env";
+import { mandateSummaryProjection } from "@/lib/public-projections";
 
 export const runtime = "nodejs";
 
@@ -32,14 +33,14 @@ export async function POST(request: Request) {
     const params = (body.params ?? {}) as Record<string, unknown>;
     const db = await database();
     if (method === "tasks/get") {
-      const mandate = await db.collection("mandates").findOne({ mandateId: String(params.id) }, { projection: { _id: 0 } });
+      const mandate = await db.collection("mandates").findOne({ mandateId: String(params.id) }, { projection: mandateSummaryProjection });
       if (!mandate) throw new ApiError(404, "Task not found");
       return Response.json({ jsonrpc: "2.0", id: body.id ?? null, result: taskFromMandate(mandate as Record<string, unknown>) });
     }
     if (method === "tasks/send") {
       const mandateId = String(params.mandateId ?? "");
       if (!mandateId) throw new ApiError(422, "mandateId is required");
-      const mandate = await db.collection("mandates").findOne({ mandateId }, { projection: { _id: 0 } });
+      const mandate = await db.collection("mandates").findOne({ mandateId }, { projection: mandateSummaryProjection });
       if (!mandate) throw new ApiError(404, "Mandate not found");
       return Response.json({ jsonrpc: "2.0", id: body.id ?? null, result: { task: taskFromMandate(mandate as Record<string, unknown>), next: `${env().NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandateId}/accept` } });
     }
