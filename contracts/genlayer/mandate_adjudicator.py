@@ -9,6 +9,7 @@ import json
 POLICIES = (
     "GENERAL_V1",
     "RESEARCH_DATA_V1",
+    "RESEARCH_DATA_V2",
     "SOFTWARE_WEB_V1",
     "CREATIVE_VISUAL_V1",
 )
@@ -77,6 +78,12 @@ POLICY_GUIDANCE = {
     "RESEARCH_DATA_V1": (
         "Validate schema and counts, then inspect source support record by record. "
         "Distinguish a source repeating the provider's claim from independent corroboration."
+    ),
+    "RESEARCH_DATA_V2": (
+        "Validate schema, counts, canonical URLs, retrieval timestamps, and hashes. "
+        "Inspect source support record by record and classify sources as primary, corroborating, "
+        "weak, contradictory, inaccessible, or unverifiable. Distinguish a source repeating the "
+        "provider's claim from independent corroboration."
     ),
     "SOFTWARE_WEB_V1": (
         "Inspect implementation, live behavior, relevant tests, configuration, and negative "

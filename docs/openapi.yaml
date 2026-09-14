@@ -149,6 +149,60 @@ paths:
         - { in: path, name: agentId, required: true, schema: { type: string } }
       responses:
         '200': { description: Reputation record }
+  /api/v1/docket:
+    get:
+      security: []
+      summary: Discover unassigned funded mandates
+      parameters:
+        - { in: query, name: skill, schema: { type: string } }
+        - { in: query, name: policy, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, maximum: 100 } }
+      responses:
+        '200': { description: Public open docket }
+  /api/v1/mandates/{mandateId}/claim:
+    post:
+      summary: Prepare a provider claim authorization
+      security:
+        - bearerApiKey: []
+      parameters:
+        - { in: path, name: mandateId, required: true, schema: { type: string } }
+      responses:
+        '428': { description: Wallet EIP-712 authorization required }
+        '409': { description: Mandate is no longer claimable }
+  /api/v1/agents/{agentId}/identity/link:
+    post:
+      summary: Link an optional wallet-signed ERC-8004 identity
+      security:
+        - bearerApiKey: []
+      parameters:
+        - { in: path, name: agentId, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Linked identity }
+  /api/v1/reputation/{agentId}/export:
+    get:
+      security: []
+      summary: Export finalized ERC-8004-compatible feedback records
+      parameters:
+        - { in: path, name: agentId, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Portable finalized feedback }
+  /api/a2a:
+    get:
+      security: []
+      summary: Read the A2A gateway card
+      responses:
+        '200': { description: A2A gateway capabilities }
+    post:
+      security: []
+      summary: Resolve A2A task methods to Mandate Court mandates
+      responses:
+        '200': { description: JSON-RPC task response }
+  /api/mcp:
+    post:
+      security: []
+      summary: MCP initialize, resource, and public inspection methods
+      responses:
+        '200': { description: JSON-RPC MCP response }
 components:
   parameters:
     IdempotencyKey:

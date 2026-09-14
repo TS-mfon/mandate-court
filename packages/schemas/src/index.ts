@@ -5,6 +5,7 @@ export const hashSchema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 export const policySchema = z.enum([
   "GENERAL_V1",
   "RESEARCH_DATA_V1",
+  "RESEARCH_DATA_V2",
   "SOFTWARE_WEB_V1",
   "CREATIVE_VISUAL_V1",
 ]);
@@ -22,9 +23,11 @@ export const criterionSchema = z.object({
 
 export const mandateSchema = z
   .object({
-    protocol: z.literal("mandate-court/1.0").default("mandate-court/1.0"),
+    protocol: z.enum(["mandate-court/1.0", "mandate-court/1.1"]).default("mandate-court/1.0"),
     providerAgentId: z.string().min(3).max(100).optional(),
     providerWallet: addressSchema.optional(),
+    requiredSkills: z.array(z.string().min(2).max(80)).max(32).default([]),
+    deliveryTypes: z.array(z.string().min(2).max(80)).max(16).default([]),
     objective: z.string().min(12).max(4_000),
     deliverables: z.array(z.string().min(3).max(1_000)).min(1).max(32),
     acceptanceCriteria: z.array(criterionSchema).min(1).max(32),
@@ -62,6 +65,9 @@ export const artifactSchema = z.object({
   sha256: hashSchema,
   mediaType: z.string().min(3).max(150),
   criteria: z.array(z.string().min(1).max(64)).max(32),
+  contentLength: z.number().int().nonnegative().max(50_000_000).optional(),
+  retrievedAt: z.string().datetime().optional(),
+  immutableRevision: z.string().max(200).optional(),
 });
 
 export const evidenceSchema = z.object({
@@ -70,16 +76,24 @@ export const evidenceSchema = z.object({
   url: z.string().url().startsWith("https://"),
   sha256: hashSchema,
   supports: z.array(z.string().min(1).max(64)).max(32),
+  sourceType: z.enum(["PRIMARY", "CORROBORATING", "WEAK", "CONTRADICTORY", "INACCESSIBLE", "UNVERIFIABLE"]).optional(),
+  retrievedAt: z.string().datetime().optional(),
+  claim: z.string().max(2_000).optional(),
 });
 
 export const deliveryManifestSchema = z.object({
-  protocol: z.literal("mdp/1.0"),
+  protocol: z.enum(["mdp/1.0", "mdp/1.1"]),
   mandateId: z.string().min(3).max(100),
   providerAgentId: z.string().min(3).max(100),
   submittedAt: z.string().datetime(),
   summary: z.string().min(3).max(4_000),
   artifacts: z.array(artifactSchema).min(1).max(32),
   evidence: z.array(evidenceSchema).min(1).max(16),
+  snapshot: z.object({
+    contentHash: hashSchema,
+    capturedAt: z.string().datetime(),
+    httpStatus: z.number().int().min(100).max(599).optional(),
+  }).optional(),
 });
 
 export const judgmentSchema = z.object({
@@ -114,6 +128,16 @@ export const agentRegistrationSchema = z.object({
   skills: z.array(z.string().min(2).max(80)).max(32),
   agentCardUrl: z.string().url().startsWith("https://").optional(),
   callbackUrl: z.string().url().startsWith("https://").optional(),
+  a2aUrl: z.string().url().startsWith("https://").optional(),
+  mcpUrl: z.string().url().startsWith("https://").optional(),
+  supportedPolicies: z.array(policySchema).max(16).default([]),
+  deliveryTypes: z.array(z.string().min(2).max(80)).max(16).default([]),
+  erc8004: z.object({
+    agentId: z.string().min(1).max(200),
+    registryAddress: addressSchema,
+    chainId: z.number().int().positive(),
+    identityUri: z.string().url().startsWith("https://").optional(),
+  }).optional(),
 });
 
 export type MandateInput = z.infer<typeof mandateSchema>;

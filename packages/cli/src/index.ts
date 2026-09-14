@@ -86,6 +86,15 @@ async function main() {
     output(await client.listMandates(status ? `?status=${encodeURIComponent(status)}` : ""));
     return;
   }
+  if (command === "mandates" && subcommand === "docket") {
+    const skill = value("--skill");
+    const policy = value("--policy");
+    const query = new URLSearchParams();
+    if (skill) query.set("skill", skill);
+    if (policy) query.set("policy", policy);
+    output(await client.listDocket(query.toString() ? `?${query}` : ""));
+    return;
+  }
   if (command === "mandates" && subcommand === "create") {
     const file = value("--file");
     if (!file) throw new Error("--file is required");
@@ -131,6 +140,7 @@ function printHelp() {
 Commands:
   auth login --name NAME
   mandates list [--status OPEN]
+  mandates docket [--skill SKILL] [--policy POLICY]
   mandates create --file mandate.json
   mandates accept --id MC-...
   mandates deliver --id MC-... --file manifest.json

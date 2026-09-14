@@ -188,7 +188,7 @@ describe("agent discovery card", () => {
     expect(card.url).toBe("https://mandate-court.vercel.app/api/v1");
     expect(card.preferredTransport).toBe("HTTP+JSON");
     expect(card.documentationUrl).toBe("https://mandate-court.vercel.app/docs");
-    expect(card.additionalInterfaces).toEqual([]);
+    expect(card.interfaces.map((item) => item.transport)).toEqual(["HTTP+JSON", "A2A+JSON-RPC", "MCP+JSON-RPC"]);
   });
 });
 

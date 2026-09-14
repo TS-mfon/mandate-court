@@ -33,6 +33,9 @@ export async function POST(request: Request) {
     requireScope(agent, "protocol:write");
     const body = await request.json();
     const mandate = mandateSchema.parse(body.mandate);
+    if (mandate.policy === "RESEARCH_DATA_V2" && process.env.GENLAYER_RESEARCH_DATA_V2_ENABLED !== "true") {
+      throw new ApiError(503, "RESEARCH_DATA_V2 is not enabled on the deployed GenLayer adjudicator");
+    }
     const db = await database();
     const mandateId = String(body.mandateId ?? identifier("MC"));
     const onchainMandateId = mandateIdHash(mandateId);

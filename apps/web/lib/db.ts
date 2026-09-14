@@ -27,9 +27,12 @@ export async function ensureIndexes() {
     db.collection("agents").createIndex({ agentId: 1 }, { unique: true }),
     db.collection("mandates").createIndex({ mandateId: 1 }, { unique: true }),
     db.collection("mandates").createIndex({ status: 1, policy: 1, createdAt: -1 }),
+    db.collection("mandates").createIndex({ status: 1, providerAgentId: 1, "mandate.requiredSkills": 1, createdAt: -1 }),
     db.collection("operations").createIndex({ idempotencyKey: 1, agentId: 1 }, { unique: true, sparse: true }),
     db.collection("relayJobs").createIndex({ status: 1, nextAttemptAt: 1 }),
     db.collection("processorLeases").createIndex({ name: 1 }, { unique: true }),
+    db.collection("webhookJobs").createIndex({ status: 1, nextAttemptAt: 1 }),
+    db.collection("webhookJobs").createIndex({ eventId: 1 }, { unique: true }),
   ]);
 }
 

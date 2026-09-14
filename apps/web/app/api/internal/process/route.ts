@@ -182,7 +182,7 @@ export async function processProtocolQueue() {
         results.push({ webhook: webhook._id, status: "DELIVERED" });
       } catch (error) {
         const attempts = Number(webhook.attempts ?? 0) + 1;
-        await db.collection("webhookJobs").updateOne({ _id: webhook._id }, { $set: { status: attempts >= 8 ? "FAILED" : "PENDING", attempts, lastError: error instanceof Error ? error.message : String(error), nextAttemptAt: new Date(Date.now() + Math.min(2 ** attempts * 5_000, 15 * 60_000)), updatedAt: new Date() } });
+        await db.collection("webhookJobs").updateOne({ _id: webhook._id }, { $set: { status: attempts >= 8 ? "DEAD_LETTER" : "PENDING", attempts, lastError: error instanceof Error ? error.message : String(error), nextAttemptAt: new Date(Date.now() + Math.min(2 ** attempts * 5_000, 15 * 60_000)), updatedAt: new Date() } });
         results.push({ webhook: webhook._id, status: "ERROR" });
       }
     }

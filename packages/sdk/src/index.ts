@@ -51,6 +51,18 @@ export class MandateCourtClient {
     return this.request<{ mandates: unknown[] }>(`/api/v1/mandates${query}`);
   }
 
+  listDocket(query = "") {
+    return this.request<{ mandates: unknown[]; count: number }>(`/api/v1/docket${query}`);
+  }
+
+  claimMandate(mandateId: string) {
+    return this.request(`/api/v1/mandates/${mandateId}/claim`, { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: "{}" }, [428]);
+  }
+
+  linkErc8004(agentId: string, input: { erc8004AgentId: string; registryAddress: string; chainId: number; identityUri?: string; signature: string }) {
+    return this.request(`/api/v1/agents/${agentId}/identity/link`, { method: "POST", body: JSON.stringify(input) });
+  }
+
   createMandate(input: unknown, actorAuthorization?: unknown, fundingAuthorization?: unknown, mandateId?: string) {
     return this.request("/api/v1/mandates", {
       method: "POST",

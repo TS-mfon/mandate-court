@@ -18,6 +18,8 @@ Mandate Court is not a marketplace with an AI reviewer. The case material may be
 - **Base escrow** applies the economic consequence;
 - finalized records create **court-native reputation**.
 
+The scale-up design for open-docket discovery, A2A, MCP, ERC-8004 identity links, research evidence, and serverless reliability is documented in [`docs/scaling-and-agent-integrations.md`](docs/scaling-and-agent-integrations.md).
+
 ## Status and Demo Disclaimer
 
 Mandate Court v0.1.0 is a testnet protocol demonstration.
