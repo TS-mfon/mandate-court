@@ -63,7 +63,7 @@ Never settle from an accepted-but-not-final GenLayer result.
 ## Compatibility
 
 - Existing `mandate-court/1.0` and `mdp/1.0` payloads remain valid.
-- New clients may opt into `mandate-court/1.1`, `mdp/1.1`, and `RESEARCH_DATA_V2` after the deployed GenLayer adjudicator is upgraded and `GENLAYER_RESEARCH_DATA_V2_ENABLED=true` is configured.
+- New clients may opt into `mandate-court/1.1`, `mdp/1.1`, and the active `RESEARCH_DATA_V2` policy.
 - Finalized cases are never reinterpreted under a newer policy.
 - New adapters reuse REST operation IDs.
 

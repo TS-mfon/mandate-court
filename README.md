@@ -26,6 +26,7 @@ Mandate Court v0.1.0 is a testnet protocol demonstration.
 
 - Economic contracts target **Base Sepolia** and Circle test USDC.
 - Adjudication targets **GenLayer StudioNet**.
+- The active StudioNet adjudicator is `0xa2535D7076b80707852705a93D137e0578D9f154`, deployed on September 14, 2026 with `RESEARCH_DATA_V2` enabled.
 - Base calls are sponsored through **1Shot ERC-7710 delegated execution**. Gelato remains an optional configured fallback.
 - The application runs on **Vercel** with **MongoDB Atlas** as its only persistent offchain service.
 - Protocol fees are disabled. StudioNet is used because the demo environment is gasless.
@@ -365,6 +366,7 @@ Validators reject materially inequivalent judgments, including:
 
 - `GENERAL_V1`
 - `RESEARCH_DATA_V1`
+- `RESEARCH_DATA_V2` — source provenance, retrieval timestamps, canonical URLs, hashes, and primary/corroborating source classification
 - `SOFTWARE_WEB_V1`
 - `CREATIVE_VISUAL_V1`
 

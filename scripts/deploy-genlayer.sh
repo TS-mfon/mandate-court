@@ -33,11 +33,14 @@ fi
 
 RECEIPT=$(printf '%s\n' "$PASSWORD" | genlayer receipt "$TX_HASH" --status FINALIZED --retries 180 --interval 3000)
 printf '%s\n' "$RECEIPT" > "$ROOT_DIR/.deployment/genlayer-receipt.log"
-if ! printf '%s\n' "$RECEIPT" | grep -q "status_name: 'FINALIZED'" || ! printf '%s\n' "$RECEIPT" | grep -q "result: 6"; then
+if ! printf '%s\n' "$RECEIPT" | grep -q "status_name: 'FINALIZED'" || ! printf '%s\n' "$RECEIPT" | grep -q "result_name: 'MAJORITY_AGREE'"; then
   echo "GenLayer deployment did not finalize successfully; refusing to configure an address" >&2
   exit 1
 fi
 CONTRACT_ADDRESS=$(printf '%s\n' "$RECEIPT" | sed -n "s/.*contract_address: '\(0x[a-fA-F0-9]\{40\}\)'.*/\1/p" | head -1)
+if [[ -z "$CONTRACT_ADDRESS" ]]; then
+  CONTRACT_ADDRESS=$(printf '%s\n' "$RECEIPT" | sed -n "s/.*recipient: '\(0x[a-fA-F0-9]\{40\}\)'.*/\1/p" | head -1)
+fi
 
 if [[ -z "$CONTRACT_ADDRESS" ]]; then
   echo "Unable to extract deployed GenLayer contract address" >&2
