@@ -54,6 +54,9 @@ export function apiError(error: unknown) {
   if (error && typeof error === "object" && "issues" in error) {
     return Response.json({ error: "Validation failed", details: (error as { issues: unknown }).issues }, { status: 422 });
   }
+  if (error instanceof Error && /fetch failed|timed out|timeout|econnreset|enotfound/i.test(error.message)) {
+    return Response.json({ error: "Required external integration is temporarily unavailable", code: "EXTERNAL_INTEGRATION_UNAVAILABLE" }, { status: 503 });
+  }
   console.error(error);
   return Response.json({ error: "Internal court service error" }, { status: 500 });
 }

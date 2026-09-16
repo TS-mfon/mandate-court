@@ -10,6 +10,7 @@ import { terminalRelayError } from "../apps/web/lib/processor-errors";
 import { compactCaseId } from "../apps/web/lib/case-display";
 import { mandateTransactionFields } from "../apps/web/lib/relay-transactions";
 import { mandateSummaryProjection, publicAgentProjection } from "../apps/web/lib/public-projections";
+import { adjudicationDependencyState } from "../apps/web/lib/processor-dependencies";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -123,6 +124,22 @@ describe("relay transaction persistence", () => {
   it("does not write undefined transaction fields", () => {
     expect(mandateTransactionFields("CREATE_MANDATE")).toEqual({});
     expect(mandateTransactionFields("UNKNOWN", "0xhash")).toEqual({});
+  });
+});
+
+describe("processor job dependencies", () => {
+  it("does not allow adjudication before delivery is confirmed on Base", () => {
+    expect(adjudicationDependencyState({ deliveryJobStatus: "WAITING_FOR_BASE_SUBMISSION" })).toBe("WAITING");
+    expect(adjudicationDependencyState({ deliveryJobStatus: "SUBMITTED" })).toBe("WAITING");
+    expect(adjudicationDependencyState({ deliveryJobStatus: "COMPLETED" })).toBe("WAITING");
+  });
+
+  it("requires the completed delivery transaction hash", () => {
+    expect(adjudicationDependencyState({ deliveryJobStatus: "COMPLETED", deliveryTransactionHash: "0xdelivery" })).toBe("READY");
+  });
+
+  it("blocks adjudication permanently when delivery fails", () => {
+    expect(adjudicationDependencyState({ deliveryJobStatus: "FAILED", deliveryTransactionHash: "0xdelivery" })).toBe("BLOCKED");
   });
 });
 

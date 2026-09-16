@@ -5,6 +5,7 @@ import { appealJudgment, configuredGenLayerContractAddress, judgmentProgress, su
 import { enqueueWebhook } from "@/lib/webhooks";
 import { terminalRelayError } from "@/lib/processor-errors";
 import { mandateTransactionFields } from "@/lib/relay-transactions";
+import { adjudicationDependencyState } from "@/lib/processor-dependencies";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,6 +28,29 @@ export async function processProtocolQueue() {
       try {
         const mandate = await db.collection("mandates").findOne({ mandateId: job.mandateId });
         if (!mandate) throw new Error("Mandate document missing");
+        if (job.type === "GENLAYER_ADJUDICATION") {
+          const deliveryJob = await db.collection("relayJobs").findOne({ mandateId: job.mandateId, type: "SUBMIT_DELIVERY" }, { sort: { createdAt: -1 } });
+          const dependency = adjudicationDependencyState({
+            deliveryJobStatus: String(deliveryJob?.status ?? "MISSING"),
+            deliveryTransactionHash: String(deliveryJob?.transactionHash ?? mandate.deliveryTransactionHash ?? "") || undefined,
+          });
+          if (dependency === "BLOCKED") {
+            await db.collection("relayJobs").updateOne(
+              { _id: job._id },
+              { $set: { status: "FAILED", lastError: "Cannot adjudicate because Base delivery submission failed", updatedAt: new Date() } },
+            );
+            results.push({ job: job._id, status: "BLOCKED_BY_DELIVERY_FAILURE" });
+            continue;
+          }
+          if (dependency === "WAITING") {
+            await db.collection("relayJobs").updateOne(
+              { _id: job._id },
+              { $set: { status: "WAITING_FOR_BASE_SUBMISSION", nextAttemptAt: new Date(Date.now() + 15_000), updatedAt: new Date() } },
+            );
+            results.push({ job: job._id, status: "WAITING_FOR_BASE_SUBMISSION" });
+            continue;
+          }
+        }
         if (job.status === "SUBMITTED" && job.relayTaskId) {
           const status = await relayStatus(job.relayProvider as RelayProvider, job.relayTaskId);
           if (!relayTerminal(String(status.taskState))) {
@@ -45,7 +69,7 @@ export async function processProtocolQueue() {
             { _id: job._id },
             { $set: { status: "COMPLETED", lastStatus: status, ...(transactionHash ? { transactionHash } : {}), updatedAt: new Date() }, $unset: { lastError: "" } },
           );
-          if (job.type === "SUBMIT_DELIVERY") await db.collection("relayJobs").updateOne({ mandateId: job.mandateId, type: "GENLAYER_ADJUDICATION" }, { $set: { status: "PENDING", nextAttemptAt: new Date() } });
+          if (job.type === "SUBMIT_DELIVERY") await db.collection("relayJobs").updateOne({ mandateId: job.mandateId, type: "GENLAYER_ADJUDICATION", status: "WAITING_FOR_BASE_SUBMISSION" }, { $set: { status: "PENDING", nextAttemptAt: new Date(), updatedAt: new Date() } });
           if (job.type === "CREATE_MANDATE" && mandate.providerAgentId) {
             await enqueueWebhook(mandate.providerAgentId, "mandate.assigned", { mandateId: mandate.mandateId, mandateUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}`, acceptUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}/accept` });
           }
