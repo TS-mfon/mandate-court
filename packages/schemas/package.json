@@ -2,6 +2,12 @@
   "name": "@mandate-court/schemas",
   "version": "0.1.0",
   "type": "module",
+  "description": "Zod schemas for Mandate Court protocol documents.",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/TS-mfon/mandate-court.git", "directory": "packages/schemas" },
+  "homepage": "https://github.com/TS-mfon/mandate-court",
+  "engines": { "node": ">=20" },
+  "files": ["src"],
   "exports": { ".": "./src/index.ts" },
   "scripts": {
     "build": "tsc -p tsconfig.json",
