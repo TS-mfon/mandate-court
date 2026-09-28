@@ -6,6 +6,7 @@ const schema = z.object({
   API_KEY_PEPPER: z.string().min(24),
   COURT_SIGNER_PRIVATE_KEY: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
   WEBHOOK_SIGNING_SECRET: z.string().min(24).optional(),
+  WEBHOOK_ENCRYPTION_KEY: z.string().min(24).optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
 });
 

@@ -107,6 +107,45 @@ contract MandateCourtTest {
         _assertTrue(adapter.settled(MANDATE_ID));
     }
 
+    function testFuzzProviderBpsIsBounded(uint16 providerBps) public {
+        _create(address(0));
+        _accept();
+        bytes32 deliveryHash = keccak256("fuzz-delivery");
+        _submit(deliveryHash);
+        CourtTypes.FinalJudgment memory judgment = _judgment(deliveryHash, providerBps, 1);
+        _finalize(judgment);
+        bytes memory signature = _signJudgment(judgment);
+
+        if (providerBps > 10_000) {
+            vm.expectRevert();
+            adapter.executeFinalJudgment(judgment, signature);
+            _assertTrue(!adapter.settled(MANDATE_ID));
+            return;
+        }
+
+        adapter.executeFinalJudgment(judgment, signature);
+        uint256 providerAmount = uint256(20_000_000) * uint256(providerBps) / 10_000;
+        _assertEq(usdc.balanceOf(provider), providerAmount);
+        _assertEq(usdc.balanceOf(principal), 100_000_000 - providerAmount);
+        _assertTrue(adapter.usedNonces(1));
+    }
+
+    function testFuzzSettlementNonceReplayIsRejected(uint256 nonce) public {
+        _create(address(0));
+        _accept();
+        bytes32 deliveryHash = keccak256("nonce-delivery");
+        _submit(deliveryHash);
+        CourtTypes.FinalJudgment memory judgment = _judgment(deliveryHash, 10_000, nonce);
+        _finalize(judgment);
+        bytes memory signature = _signJudgment(judgment);
+        adapter.executeFinalJudgment(judgment, signature);
+
+        vm.expectRevert();
+        adapter.executeFinalJudgment(judgment, signature);
+        _assertTrue(adapter.settled(MANDATE_ID));
+        _assertTrue(adapter.usedNonces(nonce));
+    }
+
     function testDirectAssignmentRejectsWrongProvider() public {
         _create(provider);
         uint256 attackerKey = 0xBAD;

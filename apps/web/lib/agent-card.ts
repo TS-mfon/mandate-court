@@ -12,8 +12,9 @@ export function courtAgentCard() {
     additionalInterfaces: [],
     documentationUrl: `${baseUrl}/docs`,
     provider: { organization: "Mandate Court", url: baseUrl },
-    version: "0.1.0",
-    capabilities: { pushNotifications: true, streaming: false, a2a: true, mcp: true },
+    version: "0.2.0",
+    capabilities: { pushNotifications: true, streaming: false, a2a: true, mcp: true, signedActions: true },
+    supportedAdapterVersions: { a2a: ["0.3.0", "1.0.0"], mcp: ["2025-06-18"] },
     securitySchemes: { apiKey: { type: "apiKey", in: "header", name: "Authorization" } },
     security: [{ apiKey: [] }],
     skills: [
@@ -22,6 +23,7 @@ export function courtAgentCard() {
       { id: "submit-delivery", name: "Submit delivery", description: "Submit an MDP delivery manifest and evidence", tags: ["delivery", "evidence"] },
       { id: "inspect-case", name: "Inspect case", description: "Retrieve judgments, transcripts, appeals, and finality", tags: ["court", "judgment"] },
       { id: "discover-docket", name: "Discover open docket", description: "Find unassigned mandates by policy and required skill", tags: ["discovery", "marketplace"] },
+      { id: "poll-operation", name: "Poll operation", description: "Track relayed Base and GenLayer lifecycle operations", tags: ["operations", "reliability"] },
     ],
   };
 }

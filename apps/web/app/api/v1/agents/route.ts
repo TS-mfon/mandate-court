@@ -1,7 +1,7 @@
 import { agentRegistrationSchema } from "@mandate-court/schemas";
 import { apiError, authenticate, requireScope } from "@/lib/auth";
 import { database } from "@/lib/db";
-import { publicAgentProjection } from "@/lib/public-projections";
+import { authenticatedAgentProjection, publicAgentProjection } from "@/lib/public-projections";
 
 export const runtime = "nodejs";
 
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       { $set: { ...input, walletAddress: auth.walletAddress, updatedAt: new Date() }, $setOnInsert: { agentId: auth.agentId, createdAt: new Date() } },
       { upsert: true },
     );
-    const agent = await db.collection("agents").findOne({ agentId: auth.agentId }, { projection: { _id: 0 } });
+    const agent = await db.collection("agents").findOne({ agentId: auth.agentId }, { projection: authenticatedAgentProjection });
     return Response.json({ agent }, { status: 201 });
   } catch (error) {
     return apiError(error);

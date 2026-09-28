@@ -2,13 +2,22 @@ import { ApiError, apiError } from "@/lib/auth";
 import { relayAccept, relayCreate, relayDelivery, relayLinkCase, relayRecordAccepted, relayRecordAppeal, relayRecordFinalized, relaySettlement, relayStatus, relayTerminal, type RelayProvider } from "@/lib/base-relay";
 import { acquireProcessorLease, database, releaseProcessorLease } from "@/lib/db";
 import { appealJudgment, configuredGenLayerContractAddress, judgmentProgress, submitAdjudication } from "@/lib/genlayer";
-import { enqueueWebhook } from "@/lib/webhooks";
+import { enqueueWebhook, webhookHeaders } from "@/lib/webhooks";
 import { terminalRelayError } from "@/lib/processor-errors";
 import { mandateTransactionFields } from "@/lib/relay-transactions";
 import { adjudicationDependencyState } from "@/lib/processor-dependencies";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+async function enqueueWebhookWithoutBlockingLifecycle(agentId: string, type: string, payload: unknown) {
+  try {
+    return await enqueueWebhook(agentId, type, payload);
+  } catch (error) {
+    console.error("Webhook enqueue failed", { agentId, type, error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
 
 function authorized(request: Request) {
   const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
@@ -71,12 +80,12 @@ export async function processProtocolQueue() {
           );
           if (job.type === "SUBMIT_DELIVERY") await db.collection("relayJobs").updateOne({ mandateId: job.mandateId, type: "GENLAYER_ADJUDICATION", status: "WAITING_FOR_BASE_SUBMISSION" }, { $set: { status: "PENDING", nextAttemptAt: new Date(), updatedAt: new Date() } });
           if (job.type === "CREATE_MANDATE" && mandate.providerAgentId) {
-            await enqueueWebhook(mandate.providerAgentId, "mandate.assigned", { mandateId: mandate.mandateId, mandateUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}`, acceptUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}/accept` });
+            await enqueueWebhookWithoutBlockingLifecycle(mandate.providerAgentId, "mandate.assigned", { mandateId: mandate.mandateId, mandateUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}`, acceptUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/v1/mandates/${mandate.mandateId}/accept` });
           }
           if (job.type === "SETTLEMENT") {
-            await enqueueWebhook(mandate.principalAgentId, "mandate.settled", { mandateId: mandate.mandateId, manifest: mandate.manifest, judgment: mandate.judgment, transactionHash: "transactionHash" in status ? status.transactionHash : undefined });
+            await enqueueWebhookWithoutBlockingLifecycle(mandate.principalAgentId, "mandate.settled", { mandateId: mandate.mandateId, manifest: mandate.manifest, judgment: mandate.judgment, transactionHash: "transactionHash" in status ? status.transactionHash : undefined });
             if (mandate.providerAgentId) {
-              await enqueueWebhook(mandate.providerAgentId, "mandate.settled", { mandateId: mandate.mandateId, judgment: mandate.judgment, transactionHash: "transactionHash" in status ? status.transactionHash : undefined });
+              await enqueueWebhookWithoutBlockingLifecycle(mandate.providerAgentId, "mandate.settled", { mandateId: mandate.mandateId, judgment: mandate.judgment, transactionHash: "transactionHash" in status ? status.transactionHash : undefined });
             }
           }
           if (job.type === "RECORD_FINALIZED") {
@@ -193,20 +202,17 @@ export async function processProtocolQueue() {
       try {
         const response = await fetch(String(webhook.callbackUrl), {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-mandate-court-signature": `sha256=${webhook.signature}`,
-            "user-agent": "MandateCourt-Webhook/1.0",
-          },
+          headers: webhookHeaders({ eventId: String(webhook.eventId), signatureTimestamp: Number(webhook.signatureTimestamp), signature: String(webhook.signature) }),
           body: String(webhook.body),
           signal: AbortSignal.timeout(10_000),
         });
         if (!response.ok) throw new Error(`Webhook returned HTTP ${response.status}`);
-        await db.collection("webhookJobs").updateOne({ _id: webhook._id }, { $set: { status: "DELIVERED", deliveredAt: new Date(), updatedAt: new Date() } });
+        await db.collection("webhookJobs").updateOne({ _id: webhook._id }, { $set: { status: "DELIVERED", deliveredAt: new Date(), lastAttemptAt: new Date(), responseStatus: response.status, updatedAt: new Date() } });
         results.push({ webhook: webhook._id, status: "DELIVERED" });
       } catch (error) {
         const attempts = Number(webhook.attempts ?? 0) + 1;
-        await db.collection("webhookJobs").updateOne({ _id: webhook._id }, { $set: { status: attempts >= 8 ? "DEAD_LETTER" : "PENDING", attempts, lastError: error instanceof Error ? error.message : String(error), nextAttemptAt: new Date(Date.now() + Math.min(2 ** attempts * 5_000, 15 * 60_000)), updatedAt: new Date() } });
+        const deadLetter = attempts >= 8;
+        await db.collection("webhookJobs").updateOne({ _id: webhook._id }, { $set: { status: deadLetter ? "DEAD_LETTER" : "PENDING", attempts, lastAttemptAt: new Date(), ...(deadLetter ? { deadLetteredAt: new Date() } : {}), lastError: error instanceof Error ? error.message : String(error), nextAttemptAt: new Date(Date.now() + Math.min(2 ** attempts * 5_000, 15 * 60_000)), updatedAt: new Date() } });
         results.push({ webhook: webhook._id, status: "ERROR" });
       }
     }

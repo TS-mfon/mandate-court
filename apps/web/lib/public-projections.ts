@@ -23,4 +23,10 @@ export const mandatePublicCaseProjection = {
 export const publicAgentProjection = {
   _id: 0,
   callbackUrl: 0,
+  webhookSecretCiphertext: 0,
+} as const;
+
+export const authenticatedAgentProjection = {
+  _id: 0,
+  webhookSecretCiphertext: 0,
 } as const;

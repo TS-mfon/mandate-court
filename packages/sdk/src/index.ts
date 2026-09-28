@@ -3,6 +3,11 @@ export type MandateCourtClientOptions = {
   apiKey?: string;
 };
 
+export type OperationRecord = {
+  operation: { operationId: string; status: "QUEUED" | "PENDING" | "COMPLETED" | "FAILED" | string };
+  jobs: Array<Record<string, unknown>>;
+};
+
 export class MandateCourtError extends Error {
   constructor(public status: number, public body: unknown) {
     super(`Mandate Court request failed with status ${status}`);
@@ -63,54 +68,74 @@ export class MandateCourtClient {
     return this.request(`/api/v1/agents/${agentId}/identity/link`, { method: "POST", body: JSON.stringify(input) });
   }
 
-  createMandate(input: unknown, actorAuthorization?: unknown, fundingAuthorization?: unknown, mandateId?: string) {
+  createMandate(input: unknown, actorAuthorization?: unknown, fundingAuthorization?: unknown, mandateId?: string, idempotencyKey: string = crypto.randomUUID()) {
     return this.request("/api/v1/mandates", {
       method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
+      headers: { "idempotency-key": idempotencyKey },
       body: JSON.stringify({ mandate: input, mandateId, actorAuthorization, fundingAuthorization }),
     });
   }
 
-  submitDelivery(mandateId: string, manifest: unknown, actorAuthorization?: unknown, deliveryHash?: string) {
+  submitDelivery(mandateId: string, manifest: unknown, actorAuthorization?: unknown, deliveryHash?: string, idempotencyKey: string = crypto.randomUUID()) {
     return this.request(`/api/v1/mandates/${mandateId}/deliver`, {
       method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
+      headers: { "idempotency-key": idempotencyKey },
       body: JSON.stringify({ manifest, actorAuthorization, deliveryHash }),
     }, actorAuthorization ? [] : [428]);
   }
 
-  prepareAccept(mandateId: string, actorNonce = "0", authorizationDeadline = String(Math.floor(Date.now() / 1000) + 3600)) {
+  prepareAccept(mandateId: string, actorNonce = "0", authorizationDeadline = String(Math.floor(Date.now() / 1000) + 3600), idempotencyKey: string = crypto.randomUUID()) {
     return this.request(`/api/v1/mandates/${mandateId}/accept`, {
       method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
+      headers: { "idempotency-key": idempotencyKey },
       body: JSON.stringify({ actorNonce, authorizationDeadline }),
     }, [428]);
   }
 
-  acceptMandate(mandateId: string, actorAuthorization: unknown) {
+  acceptMandate(mandateId: string, actorAuthorization: unknown, idempotencyKey: string = crypto.randomUUID()) {
     return this.request(`/api/v1/mandates/${mandateId}/accept`, {
       method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
+      headers: { "idempotency-key": idempotencyKey },
       body: JSON.stringify({ actorAuthorization }),
     });
+  }
+
+  getOperation(operationId: string) {
+    return this.request<OperationRecord>(`/api/v1/operations/${operationId}`);
+  }
+
+  async waitForOperation(operationId: string, options: { timeoutMs?: number; intervalMs?: number; maxIntervalMs?: number; onUpdate?: (operation: OperationRecord) => void } = {}) {
+    const timeoutMs = options.timeoutMs ?? 15 * 60_000;
+    const intervalMs = options.intervalMs ?? 2_000;
+    const maxIntervalMs = options.maxIntervalMs ?? 15_000;
+    const started = Date.now();
+    let delay = intervalMs;
+    while (Date.now() - started <= timeoutMs) {
+      const operation = await this.getOperation(operationId);
+      options.onUpdate?.(operation);
+      if (["COMPLETED", "FAILED"].includes(operation.operation.status)) return operation;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay = Math.min(Math.round(delay * 1.5), maxIntervalMs);
+    }
+    throw new Error(`Operation ${operationId} did not reach a terminal state within ${timeoutMs}ms`);
   }
 
   getCase(caseId: string) {
     return this.request(`/api/v1/cases/${caseId}`);
   }
 
-  appeal(caseId: string, grounds: string, actorAuthorization: unknown) {
+  appeal(caseId: string, grounds: string, actorAuthorization: unknown, idempotencyKey: string = crypto.randomUUID()) {
     return this.request(`/api/v1/cases/${caseId}/appeals`, {
       method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
+      headers: { "idempotency-key": idempotencyKey },
       body: JSON.stringify({ grounds, actorAuthorization }),
     });
   }
 
-  prepareAppeal(caseId: string, grounds: string) {
+  prepareAppeal(caseId: string, grounds: string, idempotencyKey: string = crypto.randomUUID()) {
     return this.request(`/api/v1/cases/${caseId}/appeals`, {
       method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
+      headers: { "idempotency-key": idempotencyKey },
       body: JSON.stringify({ grounds }),
     }, [428]);
   }

@@ -9,11 +9,15 @@ const cliArgs = normalizeCliArgs(process.argv.slice(2));
 const [command, subcommand, ...args] = cliArgs;
 const baseUrl = process.env.MANDATE_COURT_URL ?? "http://localhost:3000";
 const client = new MandateCourtClient({ baseUrl, apiKey: process.env.MANDATE_COURT_API_KEY });
-const version = "0.1.0";
+const version = "0.2.0";
 
 function value(flag: string) {
   const index = args.indexOf(flag);
   return index >= 0 ? args[index + 1] : undefined;
+}
+
+function hasFlag(flag: string) {
+  return args.includes(flag) || cliArgs.includes(flag);
 }
 
 function output(data: unknown) {
@@ -34,35 +38,46 @@ async function actorAuthorization(typedData: any, wallet: ReturnType<typeof acco
 async function createMandate(file: string) {
   const wallet = account();
   const mandate = JSON.parse(await readFile(resolveCliPath(file), "utf8"));
-  const prepared = await client.createMandate(mandate);
+  const idempotencyKey = crypto.randomUUID();
+  const prepared = await client.createMandate(mandate, undefined, undefined, undefined, idempotencyKey);
   const actor = await actorAuthorization((prepared as any).actorTypedData, wallet);
   const funding = (prepared as any).fundingAuthorization;
   const fundingSignature = await wallet.signTypedData(funding.typedData);
   const split = parseSignature(fundingSignature);
   const fundingAuthorization = { validAfter: funding.validAfter, validBefore: funding.validBefore, nonce: funding.nonce, v: Number(split.v), r: split.r, s: split.s };
-  return client.createMandate(mandate, actor, fundingAuthorization, (prepared as any).mandateId);
+  return client.createMandate(mandate, actor, fundingAuthorization, (prepared as any).mandateId, idempotencyKey);
 }
 
 async function deliverMandate(mandateId: string, file: string) {
   const wallet = account();
   const manifest = JSON.parse(await readFile(resolveCliPath(file), "utf8"));
-  const prepared = await client.submitDelivery(mandateId, manifest);
+  const idempotencyKey = crypto.randomUUID();
+  const prepared = await client.submitDelivery(mandateId, manifest, undefined, undefined, idempotencyKey);
   const actor = await actorAuthorization((prepared as any).actorTypedData, wallet);
-  return client.submitDelivery(mandateId, manifest, actor, (prepared as any).deliveryHash);
+  return client.submitDelivery(mandateId, manifest, actor, (prepared as any).deliveryHash, idempotencyKey);
 }
 
 async function acceptMandate(mandateId: string) {
   const wallet = account();
-  const prepared = await client.prepareAccept(mandateId, "0");
+  const idempotencyKey = crypto.randomUUID();
+  const prepared = await client.prepareAccept(mandateId, "0", undefined, idempotencyKey);
   const actor = await actorAuthorization((prepared as any).actorTypedData, wallet);
-  return client.acceptMandate(mandateId, actor);
+  return client.acceptMandate(mandateId, actor, idempotencyKey);
 }
 
 async function appealCase(caseId: string, grounds: string) {
   const wallet = account();
-  const prepared = await client.prepareAppeal(caseId, grounds);
+  const idempotencyKey = crypto.randomUUID();
+  const prepared = await client.prepareAppeal(caseId, grounds, idempotencyKey);
   const actor = await actorAuthorization((prepared as any).actorTypedData, wallet);
-  return client.appeal(caseId, grounds, actor);
+  return client.appeal(caseId, grounds, actor, idempotencyKey);
+}
+
+async function outputWithOptionalWait(result: any) {
+  if (hasFlag("--wait") && result?.operationId) {
+    result = { ...result, operation: await client.waitForOperation(String(result.operationId)) };
+  }
+  output(result);
 }
 
 async function main() {
@@ -89,29 +104,41 @@ async function main() {
   if (command === "mandates" && subcommand === "docket") {
     const skill = value("--skill");
     const policy = value("--policy");
+    const deliveryType = value("--delivery-type");
+    const chainId = value("--chain-id");
+    const cursor = value("--cursor");
     const query = new URLSearchParams();
     if (skill) query.set("skill", skill);
     if (policy) query.set("policy", policy);
+    if (deliveryType) query.set("deliveryType", deliveryType);
+    if (chainId) query.set("chainId", chainId);
+    if (cursor) query.set("cursor", cursor);
     output(await client.listDocket(query.toString() ? `?${query}` : ""));
     return;
   }
   if (command === "mandates" && subcommand === "create") {
     const file = value("--file");
     if (!file) throw new Error("--file is required");
-    output(await createMandate(file));
+    await outputWithOptionalWait(await createMandate(file));
     return;
   }
   if (command === "mandates" && subcommand === "deliver") {
     const mandateId = value("--id");
     const file = value("--file");
     if (!mandateId || !file) throw new Error("--id and --file are required");
-    output(await deliverMandate(mandateId, file));
+    await outputWithOptionalWait(await deliverMandate(mandateId, file));
     return;
   }
   if (command === "mandates" && subcommand === "accept") {
     const mandateId = value("--id");
     if (!mandateId) throw new Error("--id is required");
-    output(await acceptMandate(mandateId));
+    await outputWithOptionalWait(await acceptMandate(mandateId));
+    return;
+  }
+  if (command === "operations" && subcommand === "wait") {
+    const operationId = value("--id");
+    if (!operationId) throw new Error("--id is required");
+    output(await client.waitForOperation(operationId));
     return;
   }
   if (command === "cases" && subcommand === "inspect") {
@@ -124,7 +151,7 @@ async function main() {
     const caseId = value("--id");
     const grounds = value("--grounds");
     if (!caseId || !grounds) throw new Error("--id and --grounds are required");
-    output(await appealCase(caseId, grounds));
+    await outputWithOptionalWait(await appealCase(caseId, grounds));
     return;
   }
   if (command === "doctor") {
@@ -140,10 +167,11 @@ function printHelp() {
 Commands:
   auth login --name NAME
   mandates list [--status OPEN]
-  mandates docket [--skill SKILL] [--policy POLICY]
-  mandates create --file mandate.json
-  mandates accept --id MC-...
-  mandates deliver --id MC-... --file manifest.json
+  mandates docket [--skill SKILL] [--policy POLICY] [--delivery-type TYPE] [--chain-id ID]
+  mandates create --file mandate.json [--wait]
+  mandates accept --id MC-... [--wait]
+  mandates deliver --id MC-... --file manifest.json [--wait]
+  operations wait --id op_...
   cases inspect --id MC-...
   cases appeal --id MC-... --grounds "Specific factual or contractual error"
   doctor

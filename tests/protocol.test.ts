@@ -11,6 +11,8 @@ import { compactCaseId } from "../apps/web/lib/case-display";
 import { mandateTransactionFields } from "../apps/web/lib/relay-transactions";
 import { mandateSummaryProjection, publicAgentProjection } from "../apps/web/lib/public-projections";
 import { adjudicationDependencyState } from "../apps/web/lib/processor-dependencies";
+import { decryptWebhookSecret, encryptWebhookSecret, verifyWebhookSignature, webhookSignature } from "../apps/web/lib/crypto";
+import { parseDocketQuery, docketMatch } from "../apps/web/lib/docket";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -65,6 +67,44 @@ describe("SDK signing challenges", () => {
     })));
     const client = new MandateCourtClient({ baseUrl: "https://mandate.example" });
     await expect(client.prepareAccept("MC-001")).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("waits for an asynchronous operation to become terminal", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      calls++;
+      const status = calls === 1 ? "PENDING" : "COMPLETED";
+      return new Response(JSON.stringify({ operation: { operationId: "op_1", status }, jobs: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+    const client = new MandateCourtClient({ baseUrl: "https://mandate.example", apiKey: "mc_live_test" });
+    await expect(client.waitForOperation("op_1", { intervalMs: 1, maxIntervalMs: 1 })).resolves.toMatchObject({ operation: { status: "COMPLETED" } });
+    expect(calls).toBe(2);
+  });
+});
+
+describe("webhook cryptography", () => {
+  it("encrypts secrets and rejects stale signatures", () => {
+    process.env.API_KEY_PEPPER = "test-pepper-that-is-long-enough";
+    process.env.MONGODB_URI = "mongodb://localhost:27017";
+    process.env.WEBHOOK_ENCRYPTION_KEY = "test-webhook-encryption-key-long";
+    const secret = "wh_live_secret";
+    const encrypted = encryptWebhookSecret(secret);
+    expect(decryptWebhookSecret(encrypted)).toBe(secret);
+    const timestamp = 1_800_000_000;
+    const body = JSON.stringify({ id: "event_1" });
+    const signature = webhookSignature(secret, timestamp, body);
+    expect(verifyWebhookSignature({ secret, timestamp, body, signature, nowSeconds: timestamp })).toBe(true);
+    expect(verifyWebhookSignature({ secret, timestamp: timestamp - 301, body, signature, nowSeconds: timestamp })).toBe(false);
+  });
+});
+
+describe("docket matching", () => {
+  it("parses hard filters and emits deterministic match reasons", () => {
+    const url = new URL("https://mandate.example/api/v1/docket?skill=research&skill=web&policy=RESEARCH_DATA_V2&deliveryType=json&chainId=84532");
+    const parsed = parseDocketQuery(url);
+    expect(parsed.query["mandate.requiredSkills"]).toEqual({ $all: ["research", "web"] });
+    expect(parsed.query["mandate.payment.chainId"]).toBe(84532);
+    expect(docketMatch({ mandate: { requiredSkills: ["research"], deliveryTypes: ["json"] } }, url).reasons).toContain("required-skills-match");
   });
 });
 
@@ -152,6 +192,7 @@ describe("public API projections", () => {
 
   it("keeps agent callback endpoints private", () => {
     expect(publicAgentProjection.callbackUrl).toBe(0);
+    expect(publicAgentProjection.webhookSecretCiphertext).toBe(0);
   });
 });
 

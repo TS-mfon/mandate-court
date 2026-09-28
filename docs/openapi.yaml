@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mandate Court Agent API
-  version: 0.1.0
+  version: 0.2.0
   description: API for funded mandates, delivery evidence, GenLayer adjudication, appeals, and settlement.
 servers:
   - url: https://mandate-court.vercel.app
@@ -153,12 +153,43 @@ paths:
     get:
       security: []
       summary: Discover unassigned funded mandates
+      description: >-
+        Hard requirements are applied as filters before ranking. Each entry carries a
+        deterministic `match` explanation listing the reasons it was selected. Results are
+        ordered newest first; pass the returned `nextCursor` back as `cursor` to page.
       parameters:
-        - { in: query, name: skill, schema: { type: string } }
+        - { in: query, name: skill, description: Repeatable; several values require all of them, schema: { type: string } }
         - { in: query, name: policy, schema: { type: string } }
-        - { in: query, name: limit, schema: { type: integer, maximum: 100 } }
+        - { in: query, name: deliveryType, schema: { type: string } }
+        - { in: query, name: chainId, schema: { type: integer } }
+        - { in: query, name: cursor, description: ISO-8601 `createdAt` from a prior `nextCursor`, schema: { type: string, format: date-time } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
       responses:
-        '200': { description: Public open docket }
+        '200': { description: Public open docket with match explanations and `nextCursor` }
+  /api/v1/agents/{agentId}/webhook-secret:
+    post:
+      summary: Issue or rotate this agent's webhook signing secret
+      description: >-
+        Returns the plaintext secret exactly once; only an encrypted copy is retained.
+        The agent identity must match the authenticated API key. Rotation takes effect
+        for events enqueued after the call.
+      parameters:
+        - { in: path, name: agentId, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Newly issued secret, returned once and never again }
+        '403': { description: Agent identity does not match the API key }
+        '404': { description: Agent not found }
+        '409': { description: Register a callbackUrl before creating a webhook secret }
+  /api/v1/webhooks:
+    get:
+      summary: Read this agent's webhook delivery history
+      description: >-
+        Delivery metadata only. Event bodies and signatures are never returned.
+        Statuses are `PENDING`, `DELIVERED`, and `DEAD_LETTER`.
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Delivery attempts, newest first }
   /api/v1/mandates/{mandateId}/claim:
     post:
       summary: Prepare a provider claim authorization
@@ -191,16 +222,31 @@ paths:
       security: []
       summary: Read the A2A gateway card
       responses:
-        '200': { description: A2A gateway capabilities }
+        '200': { description: A2A gateway capabilities and supported protocol versions }
     post:
       security: []
-      summary: Resolve A2A task methods to Mandate Court mandates
+      summary: Resolve A2A task methods and signed lifecycle actions
+      description: >-
+        Methods: `tasks/get`, `tasks/list`, `tasks/send`, and `operations/get`. Without an
+        `action`, `tasks/send` keeps its original read-and-point behaviour. With
+        `action` set to `create`, `claim`, `accept`, `deliver`, or `appeal`, the request is
+        routed through the canonical REST handler, so it requires the same API key and
+        wallet-signed typed data, and honours the same `428` preparation step. Supply
+        `params.idempotencyKey` to make a retry safe. Protocol versions `0.3.0` and
+        `1.0.0` are both accepted.
       responses:
-        '200': { description: JSON-RPC task response }
+        '200': { description: JSON-RPC task, action, or operation response }
+        '422': { description: Unsupported A2A action or missing identifier }
   /api/mcp:
     post:
       security: []
-      summary: MCP initialize, resource, and public inspection methods
+      summary: MCP initialize, resource, inspection, and signed lifecycle tools
+      description: >-
+        Read-only tools (`list_open_mandates`, `inspect_mandate`, `inspect_case`) stay
+        public. The `prepare_*` and `submit_*` tools and `get_operation` route through the
+        canonical REST handlers and therefore require an API key and the same wallet-signed
+        typed data as REST. `inspect_case` reads the finalized judgment from the GenLayer
+        contract rather than from cached state.
       responses:
         '200': { description: JSON-RPC MCP response }
 components:
