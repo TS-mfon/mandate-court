@@ -186,6 +186,37 @@ A manual stdio check:
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | node dist/index.js
 ```
 
+## Publishing
+
+Three packages go to npm, in dependency order, because this one depends on the
+sdk and the sdk depends on the schemas. `pnpm publish` rewrites `workspace:*`
+into a fixed version, so publishing this package alone produces a dependency
+that cannot resolve.
+
+```bash
+npm login                 # the @mandate-court scope must be an npm org you own
+pnpm release:npm          # from the repository root
+```
+
+`release:npm` builds first and then publishes schemas, sdk, and this package in
+order, each with `--access public`, which a scoped package needs on its first
+publish or npm treats it as private.
+
+Build before publishing is not optional and is not a hook: `dist/` is gitignored
+and the skills are copied in by `scripts/bundle.mjs` during `build`. pnpm does
+not run `prepack`, so a hook would silently ship a server with no skills. The
+`release:npm` script exists so that ordering cannot be got wrong by hand.
+
+Do not use `pnpm -r publish`: `@mandate-court/cli` is not marked private and
+would be published too.
+
+Verify a release candidate without touching the registry:
+
+```bash
+pnpm build
+cd packages/mcp-server && pnpm pack   # inspect the tarball, expect 29 files including skills/
+```
+
 ## License
 
 MIT. See the repository [`LICENSE`](../../LICENSE).

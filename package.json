@@ -16,7 +16,8 @@
     "test:oneshot": "tsx scripts/probe-oneshot.ts",
     "validate": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "court": "pnpm --filter @mandate-court/cli start",
-    "mcp": "pnpm --filter @mandate-court/mcp-server start"
+    "mcp": "pnpm --filter @mandate-court/mcp-server start",
+    "release:npm": "pnpm build && pnpm --filter @mandate-court/schemas publish --access public && pnpm --filter @mandate-court/sdk publish --access public && pnpm --filter @mandate-court/mcp-server publish --access public"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
