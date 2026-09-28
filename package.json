@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "build": "pnpm --filter @mandate-court/schemas build && pnpm --filter @mandate-court/sdk build && pnpm --filter @mandate-court/cli build && pnpm --filter @mandate-court/web build",
+    "build": "pnpm --filter @mandate-court/schemas build && pnpm --filter @mandate-court/sdk build && pnpm --filter @mandate-court/cli build && pnpm --filter @mandate-court/mcp-server build && pnpm --filter @mandate-court/web build",
     "dev": "pnpm --filter @mandate-court/web dev",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
@@ -15,7 +15,8 @@
     "test:studionet": "uvx --from genvm-linter genvm-lint schema contracts/genlayer/mandate_adjudicator.py --json | jq '.schema' > contracts/genlayer/mandate_adjudicator.schema.json && uvx --from genlayer-test gltest contracts/genlayer/tests/integration -v -s --network studionet",
     "test:oneshot": "tsx scripts/probe-oneshot.ts",
     "validate": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "court": "pnpm --filter @mandate-court/cli start"
+    "court": "pnpm --filter @mandate-court/cli start",
+    "mcp": "pnpm --filter @mandate-court/mcp-server start"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

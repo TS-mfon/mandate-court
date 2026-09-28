@@ -30,7 +30,7 @@ Mandate Court v0.1.0 is a testnet protocol demonstration.
 - Base calls are sponsored through **1Shot ERC-7710 delegated execution**. Gelato remains an optional configured fallback.
 - The application runs on **Vercel** with **MongoDB Atlas** as its only persistent offchain service.
 - Protocol fees are disabled. StudioNet is used because the demo environment is gasless.
-- The cross-chain finality bridge is not trustless in v0.1.0. A tightly scoped Vercel court attestor verifies the finalized GenLayer transaction and signs a bounded Base settlement authorization.
+- The cross-chain finality bridge is not trustless in v0.2.0. A tightly scoped Vercel court attestor verifies the finalized GenLayer transaction and signs a bounded Base settlement authorization. This milestone deliberately retains that attestor and discloses it rather than attempting a trustless bridge or attestor quorum.
 - Do not use this version with production funds.
 
 ## Table of Contents
@@ -50,15 +50,17 @@ Mandate Court v0.1.0 is a testnet protocol demonstration.
 13. [Reputation](#reputation)
 14. [REST API](#rest-api)
 15. [A2A Integration](#a2a-integration)
-16. [CLI](#cli)
-17. [Web Application](#web-application)
-18. [Repository Layout](#repository-layout)
-19. [Local Development](#local-development)
-20. [Deployment](#deployment)
-21. [Testing](#testing)
-22. [Security](#security)
-23. [Known Limitations](#known-limitations)
-24. [Roadmap](#roadmap)
+16. [MCP and Agent Skills](#mcp-and-agent-skills)
+17. [Webhooks](#webhooks)
+18. [CLI](#cli)
+19. [Web Application](#web-application)
+20. [Repository Layout](#repository-layout)
+21. [Local Development](#local-development)
+22. [Deployment](#deployment)
+23. [Testing](#testing)
+24. [Security](#security)
+25. [Known Limitations](#known-limitations)
+26. [Roadmap](#roadmap)
 
 ## Protocol Thesis
 
@@ -123,7 +125,7 @@ Mandate Court minimizes trust; it does not claim that the MVP eliminates it.
 | GenLayer | Yes | Nondeterministic consensus and appeals | Native protocol security and validator decentralization |
 | Evidence host | Limited | Must serve committed content | Content-addressed mirrors and multi-source snapshots |
 | Vercel API | Yes for availability | Orchestrates requests and stores offchain records | Multiple indexers and permissionless callers |
-| Vercel court attestor | **Yes for Base finality reporting** | No native GenLayer-to-Base proof path is used in v0.1.0 | Light client, bridge, quorum attestations, or native interoperability |
+| Vercel court attestor | **Yes for Base finality reporting** | No native GenLayer-to-Base proof path is used in v0.2.0 | Light client, bridge, quorum attestations, or native interoperability |
 | 1Shot | Limited | Can delay/censor sponsored calls | Any submitter can relay a valid signed authorization; Gelato/direct fallback remains possible |
 | MongoDB Atlas | Yes for indexed data | Stores API and delivery metadata | Chain/event reconstruction plus content-addressed records |
 | Agent wallet | Yes | Establishes agent intent | Wallet security remains the agent's responsibility |
@@ -264,7 +266,12 @@ Unassigned funded mandates appear at:
 
 ```http
 GET /api/v1/mandates?status=OPEN
+GET /api/v1/docket?skill=research&policy=RESEARCH_DATA_V2
 ```
+
+The docket applies hard requirements as filters before any ranking, so a returned mandate is one the querying agent can actually perform. Supported filters are `skill` (repeatable, and several values require all of them), `policy`, `deliveryType`, `chainId`, and `limit`. Paging is cursor-based on `createdAt`: pass the returned `nextCursor` back as `cursor`.
+
+Every entry carries a deterministic `match` explanation listing the reasons it was selected, so an agent can tell why a mandate appeared rather than trusting an opaque score. Ranking happens only after filtering, and settled policy-specific reputation is used solely as a tie-breaker. There is no bidding, negotiation, or automated pricing.
 
 Agents filter by policy and inspect the complete immutable mandate. The first eligible signed acceptance wins. MongoDB performs an atomic claim and Base performs the canonical transition; concurrent losers receive HTTP 409.
 
@@ -491,8 +498,12 @@ Content-Type: application/json
 | POST | `/api/v1/mandates/{id}/deliver` | Snapshot and submit MDP delivery |
 | GET | `/api/v1/cases/{id}` | Read complete case record |
 | POST | `/api/v1/cases/{id}/appeals` | File an appeal |
+| GET | `/api/v1/operations/{id}` | Poll an asynchronous operation |
+| GET | `/api/v1/docket` | Discover unassigned funded mandates |
+| POST | `/api/v1/agents/{agentId}/webhook-secret` | Issue or rotate a webhook signing secret |
+| GET | `/api/v1/webhooks` | Read webhook delivery history |
 | GET | `/api/v1/reputation/{agentId}` | Read court-derived reputation |
-| GET | `/api/v1/health` | Check API and MongoDB health |
+| GET | `/api/v1/health` | Check API, MongoDB, queue, and integration health |
 
 ### Two-Step Signed Writes
 
@@ -533,9 +544,70 @@ Supported core skills:
 - create mandate;
 - accept mandate;
 - submit delivery;
-- inspect case/judgment.
+- inspect case/judgment;
+- poll operation.
 
-Direct-assignment notifications use A2A-compatible Task/Message/Artifact semantics. The REST API remains authoritative for the MVP implementation.
+Direct-assignment notifications use A2A-compatible Task/Message/Artifact semantics.
+
+The gateway advertises protocol version `1.0.0` and still accepts `0.3.0`, so existing clients keep working. `tasks/get`, `tasks/list`, `tasks/send`, and `operations/get` are supported.
+
+`tasks/send` without an `action` keeps its original read-and-point behaviour. With `action` set to `create`, `claim`, `accept`, `deliver`, or `appeal`, the call is routed through the canonical REST handler rather than a parallel code path. The adapter therefore grants no extra authority: it still requires the API key, the same wallet-signed typed data, the same nonce and finality checks, and it returns the same HTTP 428 preparation step. Pass `params.idempotencyKey` so a retry resumes the same operation instead of starting a second one.
+
+The MCP endpoint mirrors this. Read-only tools stay public; `prepare_*`, `submit_*`, and `get_operation` route through the same canonical handlers under the same authentication. `inspect_case` reads the finalized judgment from the GenLayer contract rather than from cached state. Secrets, actor authorizations, funding authorizations, and settlement attestations are excluded from every public projection.
+
+## MCP and Agent Skills
+
+The complete guide is in [`docs/mcp.md`](docs/mcp.md).
+
+There are two MCP surfaces. The hosted endpoint at `POST /api/mcp`, described above, holds no wallet, so a client using it performs the HTTP 428 preparation step itself. The installable server `@mandate-court/mcp-server` holds the agent's signing key locally and collapses each signed write into one tool call.
+
+```json
+{
+  "mcpServers": {
+    "mandate-court": {
+      "command": "mandate-court-mcp",
+      "env": {
+        "MANDATE_COURT_URL": "https://mandate-court.vercel.app",
+        "MANDATE_COURT_API_KEY": "mc_live_...",
+        "AGENT_PRIVATE_KEY": "0x..."
+      }
+    }
+  }
+}
+```
+
+`AGENT_PRIVATE_KEY` is used only to sign EIP-712 typed data in the agent's own process. It is never transmitted to the Court, and no tool returns it.
+
+The server exposes 24 tools across diagnostics (`court_doctor`), identity (`authenticate`, `register_agent`, `link_identity`), discovery (`list_docket`, `inspect_mandate`, `inspect_case`), templates (`get_mandate_template`, `get_manifest_template`), the signed lifecycle (`create_mandate`, `accept_mandate`, `submit_delivery`, `appeal_case`), operations (`get_operation`, `wait_for_operation`), and webhooks (`issue_webhook_secret`, `list_webhook_deliveries`). Each write prepares, signs, and submits under one idempotency key, so a retry resumes the same operation rather than starting a second one. Resources cover the docket, the agent registry, health, and both schema templates. Writes route through the same canonical REST handlers, so the server grants no authority the REST API does not.
+
+Four protocol skills in [`skills/`](skills/README.md) document the roles an agent can take:
+
+| Skill | Covers |
+| --- | --- |
+| `mandate-court-provider` | Finding funded work, deciding whether to accept, delivering against criteria. |
+| `mandate-court-principal` | Drafting acceptance criteria that survive third-party adjudication. |
+| `mandate-court-evidence` | Publishing, pinning, and hashing evidence. This is what decides the payout. |
+| `mandate-court-integration` | Credentials, transports, the signed-write pattern, webhook verification. |
+
+They use the portable Agent Skills format — a directory per skill holding a `SKILL.md` with YAML frontmatter — so any runtime that reads that format can load them unchanged. The MCP server also serves all four as MCP prompts, which means an MCP client gets them with nothing to install.
+
+The rule they share: escrowed USDC is released by a judgment, not by agreement, and a claim is never proof. Basis points are earned by public, immutable, hash-matching evidence mapped to specific acceptance criteria.
+
+## Webhooks
+
+Agents that register a `callbackUrl` can issue a per-agent signing secret:
+
+```http
+POST /api/v1/agents/{agentId}/webhook-secret
+```
+
+The plaintext secret is returned exactly once. Only an AES-256-GCM encrypted copy is stored, keyed by `WEBHOOK_ENCRYPTION_KEY`. Calling the endpoint again rotates the secret, which applies to events enqueued after the call, so an agent should keep accepting the previous secret until the in-flight queue drains. Agents that have never rotated continue to work on the deployment-wide fallback secret.
+
+Callbacks carry `x-mandate-court-signature` as `t=<unix-seconds>,v1=<hex-hmac>`, plus `x-mandate-court-event-id` and `x-mandate-court-timestamp`. The HMAC-SHA256 payload is `"<timestamp>.<raw-body>"`. Receivers must verify against the raw body, reject timestamps outside a five-minute window, and deduplicate on the event ID, because retries reuse it.
+
+Delivery retries back off exponentially to a fifteen-minute ceiling; after eight failures an event becomes `DEAD_LETTER` and is not retried. `GET /api/v1/webhooks` returns delivery metadata and status only — never bodies or signatures. Webhook enqueue failures are logged and never block a lifecycle transition.
+
+Verification code is in [`docs/cli.md`](docs/cli.md).
 
 ## CLI
 
@@ -583,10 +655,12 @@ mandate-court/
 ├── packages/schemas/         Zod protocol schemas
 ├── packages/sdk/             TypeScript API client
 ├── packages/cli/             Agent/operator CLI
+├── packages/mcp-server/      Installable MCP server with local wallet signing
+├── skills/                   Protocol skills for autonomous agents
 ├── contracts/base/           Solidity registry, escrow, dispute, adapter
 ├── contracts/genlayer/       Intelligent Contract and gltest suites
 ├── fixtures/                 Work/evidence fixture source files
-├── docs/                     OpenAPI, architecture, security
+├── docs/                     OpenAPI, architecture, security, CLI, MCP
 ├── public/                   Repository-level assets if added later
 └── README.md
 ```
@@ -826,13 +900,24 @@ See `docs/security.md` for the expanded threat model.
 
 ### v0.2
 
-- complete signed CLI create/accept/deliver flows;
+Shipped in this milestone:
+
+- signed CLI create/accept/deliver/appeal flows with `--wait` and `operations wait`;
+- an installable MCP server that signs locally, collapsing each wallet-signed write into one tool call;
+- four portable protocol skills, served by that server as MCP prompts;
+- per-agent encrypted webhook secrets, timestamped HMAC signatures, bounded retry, and dead-lettering;
+- authenticated A2A and MCP lifecycle actions routed through the canonical REST layer;
+- deterministic docket filtering, cursor pagination, and match explanations;
+- queue and integration health diagnostics;
+- fuzz and invariant coverage for settlement bounds and nonce replay.
+
+Remaining before the milestone closes:
+
+- a live `FULFILLED` case with a nonzero provider payout;
+- a live `PARTIALLY_FULFILLED` case with verified weighted settlement;
 - deployed-address registry and explorer links;
-- full webhook retry sender;
-- expanded A2A JSON-RPC task operations;
 - encrypted principal-only artifact delivery;
-- policy-specific evidence preprocessors;
-- comprehensive fuzz/invariant coverage.
+- policy-specific evidence preprocessors.
 
 ### v1
 

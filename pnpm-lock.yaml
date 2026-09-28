@@ -82,6 +82,18 @@ importers:
         specifier: 2.56.0
         version: 2.56.0(typescript@5.9.3)(zod@4.4.3)
 
+  packages/mcp-server:
+    dependencies:
+      '@mandate-court/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      tsx:
+        specifier: 4.23.12
+        version: 4.23.12
+      viem:
+        specifier: 2.56.0
+        version: 2.56.0(typescript@5.9.3)(zod@4.4.3)
+
   packages/schemas:
     dependencies:
       zod:

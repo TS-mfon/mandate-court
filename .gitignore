@@ -3,6 +3,7 @@ node_modules
 .vercel
 dist
 coverage
+packages/mcp-server/skills
 .env
 .env.local
 .env.build
@@ -13,6 +14,7 @@ coverage
 contracts/base/cache
 contracts/base/out
 contracts/base/broadcast
+/cache/
 .gltest_cache
 .pytest_cache
 __pycache__
