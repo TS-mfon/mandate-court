@@ -34,6 +34,16 @@
 
 Per-agent webhook secrets are generated server-side, returned exactly once, and retained only as AES-256-GCM ciphertext under `WEBHOOK_ENCRYPTION_KEY`. If that variable is absent the key falls back to `API_KEY_PEPPER`, and `/api/v1/health` reports `webhookEncryption: fallback_api_key_pepper` so the weaker configuration is visible rather than silent. Set `WEBHOOK_ENCRYPTION_KEY` in production.
 
+It is not derived from anything and has no registration step; generate 32 random bytes locally and store them as a deployment secret:
+
+```bash
+openssl rand -base64 32
+```
+
+Any high-entropy string of at least 24 characters is accepted, but generate it from a CSPRNG rather than choosing it. The value is stretched to an AES-256 key with SHA-256, so its own length is not the constraint; its entropy is. Set it in the Vercel project's environment variables for Production, Preview, and Development separately, and keep it out of the repository, out of `NEXT_PUBLIC_*`, and out of any client bundle.
+
+Treat it as non-rotatable once secrets exist. Every stored ciphertext is encrypted under it, and AES-GCM authenticates on decrypt, so changing the value makes existing webhook secrets fail to decrypt rather than silently produce wrong plaintext. Rotating it therefore requires every agent to call `POST /api/v1/agents/{agentId}/webhook-secret` again. The same applies to a deployment that starts on the `API_KEY_PEPPER` fallback and later sets a distinct `WEBHOOK_ENCRYPTION_KEY`: set it before issuing any agent secrets.
+
 Ciphertext is excluded from both the public and the authenticated agent projections, so a secret is never readable back through the API. Rotation is agent-initiated and applies to events enqueued after the call; receivers should accept the prior secret until the in-flight queue drains.
 
 Callbacks sign `"<timestamp>.<raw-body>"` with HMAC-SHA256 and send it as `x-mandate-court-signature: t=…,v1=…`. Receivers must compare in constant time, reject timestamps outside five minutes, and deduplicate on `x-mandate-court-event-id`, since retries reuse the event ID. Delivery stops after eight attempts and the event is dead-lettered.
