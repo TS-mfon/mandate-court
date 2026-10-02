@@ -8,7 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
-import { createPublicClient, createWalletClient, http, formatUnits } from "viem";
+import { createPublicClient, createWalletClient, fallback, http, formatUnits } from "viem";
 import { baseSepolia } from "viem/chains";
 
 export const REPO_ROOT = "/home/sudodave/mandate-court";
@@ -34,11 +34,29 @@ export function envFile(path = join(REPO_ROOT, ".env.build")) {
   ) as Record<string, string>;
 }
 
-export const publicClient = createPublicClient({ chain: baseSepolia, transport: http("https://sepolia.base.org") });
+// Same failover set as apps/web/lib/base-rpc.ts. A single public endpoint
+// dropped a connection mid-run, so the run tooling fails over too.
+export const RPC_URLS = (process.env.BASE_SEPOLIA_RPC_URLS ?? "")
+  .split(",")
+  .map((u) => u.trim())
+  .filter((u) => u.startsWith("http"));
+
+if (!RPC_URLS.length) {
+  RPC_URLS.push("https://base-sepolia-rpc.publicnode.com", "https://sepolia.base.org", "https://base-sepolia.gateway.tenderly.co");
+}
+
+function transport() {
+  return fallback(
+    RPC_URLS.map((url) => http(url, { timeout: 15_000, retryCount: 1, retryDelay: 400 })),
+    { rank: false, retryCount: 1 },
+  );
+}
+
+export const publicClient = createPublicClient({ chain: baseSepolia, transport: transport() });
 
 export function walletFor(privateKey: string) {
   const account = privateKeyToAccount(privateKey as `0x${string}`);
-  return { account, client: createWalletClient({ account, chain: baseSepolia, transport: http("https://sepolia.base.org") }) };
+  return { account, client: createWalletClient({ account, chain: baseSepolia, transport: transport() }) };
 }
 
 export function newWallet() {

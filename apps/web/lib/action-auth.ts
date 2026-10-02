@@ -1,6 +1,6 @@
-import { createPublicClient, encodeAbiParameters, http, keccak256, parseAbiParameters, stringToHex, verifyTypedData } from "viem";
-import { baseSepolia } from "viem/chains";
+import { encodeAbiParameters, keccak256, parseAbiParameters, stringToHex, verifyTypedData } from "viem";
 import type { AuthenticatedAgent } from "./auth";
+import { baseSepoliaClient } from "./base-rpc";
 
 const actions = {
   create: keccak256(stringToHex("CREATE_MANDATE")),
@@ -57,9 +57,8 @@ export function appealPayloadHash(mandateId: `0x${string}`, grounds: string, app
 
 export async function currentActorNonce(actor: `0x${string}`) {
   const registry = process.env.MANDATE_REGISTRY_ADDRESS as `0x${string}` | undefined;
-  const rpc = process.env.BASE_SEPOLIA_RPC_URL;
-  if (!registry || !rpc) throw new Error("Actor nonce configuration is incomplete");
-  const client = createPublicClient({ chain: baseSepolia, transport: http(rpc) });
+  if (!registry) throw new Error("Actor nonce configuration is incomplete");
+  const client = baseSepoliaClient();
   return client.readContract({
     address: registry,
     abi: [{ type: "function", name: "actorNonces", stateMutability: "view", inputs: [{ name: "", type: "address" }], outputs: [{ name: "", type: "uint256" }] }],

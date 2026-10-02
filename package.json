@@ -17,12 +17,19 @@
     "validate": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "court": "pnpm --filter @mandate-court/cli start",
     "mcp": "pnpm --filter @mandate-court/mcp-server start",
+    "vercel": "vercel",
+    "deploy": "vercel deploy --prod --yes",
+    "deploy:preview": "vercel deploy --yes",
+    "env:audit": "tsx scripts/audit-vercel-env.ts",
+    "env:rotate": "tsx scripts/rotate-secrets.ts",
+    "probe:rpc": "tsx scripts/probe-rpc.ts",
     "release:npm": "pnpm build && pnpm --filter @mandate-court/schemas publish --access public && pnpm --filter @mandate-court/sdk publish --access public && pnpm --filter @mandate-court/mcp-server publish --access public"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
     "next": "16.3.3",
     "typescript": "^5.9.2",
+    "vercel": "62.1.0",
     "vitest": "^3.2.4"
   }
 }

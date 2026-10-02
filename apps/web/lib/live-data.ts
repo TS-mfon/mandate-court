@@ -1,5 +1,5 @@
-import { createPublicClient, http, type Hex } from "viem";
-import { baseSepolia } from "viem/chains";
+import { type Hex } from "viem";
+import { baseSepoliaClient } from "./base-rpc";
 import { database } from "./db";
 import { mandatePublicCaseProjection, mandateSummaryProjection, publicAgentProjection } from "./public-projections";
 import { readGenLayerCase } from "./genlayer";
@@ -38,10 +38,9 @@ function serializable(value: any): any {
 
 async function onchainMandate(onchainMandateId?: Hex) {
   const registry = process.env.MANDATE_REGISTRY_ADDRESS as Hex | undefined;
-  const rpc = process.env.BASE_SEPOLIA_RPC_URL;
-  if (!registry || !rpc || !onchainMandateId) return undefined;
+  if (!registry || !onchainMandateId) return undefined;
   try {
-    const client = createPublicClient({ chain: baseSepolia, transport: http(rpc) });
+    const client = baseSepoliaClient();
     const result = await client.readContract({ address: registry, abi: registryAbi, functionName: "getMandate", args: [onchainMandateId] });
     return {
       principal: result.principal,

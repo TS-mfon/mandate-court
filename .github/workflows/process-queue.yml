@@ -1,0 +1,118 @@
+name: Process protocol queue
+
+# Mandate Court's queue is serverless: relay jobs, GenLayer adjudication,
+# finality, settlement, and webhook delivery all advance only when
+# /api/internal/process runs. Vercel Hobby allows one cron per day, which left a
+# mandate waiting up to 24 hours between lifecycle stages. GitHub Actions
+# schedules far more frequently, so this drives the queue instead.
+#
+# The endpoint is lease-guarded and idempotent, so overlapping or repeated runs
+# are safe. CRON_SECRET must match the value set on Vercel.
+
+on:
+  schedule:
+    # Every 5 minutes. Off the hour to avoid the minute-0 stampede that GitHub
+    # delays, which in practice makes :00 schedules the least punctual.
+    - cron: "3,8,13,18,23,28,33,38,43,48,53,58 * * * *"
+  workflow_dispatch:
+    inputs:
+      passes:
+        description: Number of processor passes to run
+        required: false
+        default: "3"
+
+concurrency:
+  # Never stack runs: the endpoint takes a lease, so a queued duplicate would
+  # only sit and be refused.
+  group: process-protocol-queue
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Drive the queue
+        env:
+          COURT_URL: ${{ vars.COURT_URL || 'https://mandate-court.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PASSES: ${{ inputs.passes || '3' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "::error::CRON_SECRET is not set on this repository. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+          failures=0
+          for i in $(seq 1 "${PASSES}"); do
+            # A lifecycle stage can enqueue the next one, so several passes move a
+            # mandate further than a single call.
+            code=$(curl -sS -o /tmp/pass.json -w '%{http_code}' \
+              --max-time 120 --retry 2 --retry-delay 5 --retry-connrefused \
+              -H "authorization: Bearer ${CRON_SECRET}" \
+              "${COURT_URL}/api/internal/process") || code=000
+
+            echo "pass ${i}: HTTP ${code}"
+
+            if [ "${code}" = "401" ]; then
+              echo "::error::The Court rejected CRON_SECRET. It no longer matches the value on Vercel; rotate both together."
+              exit 1
+            fi
+
+            # 200 means a pass ran. 202 means another invocation holds the
+            # processor lease, which is normal under a frequent schedule and is
+            # not a failure. Anything else is.
+            if [ "${code}" = "200" ] || [ "${code}" = "202" ]; then
+              node -e '
+                const fs = require("node:fs");
+                let body = {};
+                try { body = JSON.parse(fs.readFileSync("/tmp/pass.json", "utf8")); } catch { return; }
+                if (body.skipped) {
+                  console.log(`  skipped: ${body.reason ?? "lease held"}`);
+                  return;
+                }
+                const results = Array.isArray(body.results) ? body.results : [];
+                if (!results.length) {
+                  console.log("  nothing pending");
+                  return;
+                }
+                console.log(`  processed ${body.processed}`);
+                for (const r of results.slice(0, 12)) {
+                  console.log(`    ${r.type ?? "job"} ${r.mandateId ?? r.operationId ?? ""} -> ${r.status ?? r.outcome ?? JSON.stringify(r).slice(0, 80)}`);
+                }
+              '
+            else
+              echo "::warning::pass ${i} returned HTTP ${code}"
+              head -c 600 /tmp/pass.json || true
+              echo
+              failures=$((failures + 1))
+            fi
+
+            [ "${i}" -lt "${PASSES}" ] && sleep 10 || true
+          done
+
+          # Every pass failing means the Court is unreachable or broken, which
+          # should fail the run rather than pass quietly.
+          if [ "${failures}" -ge "${PASSES}" ]; then
+            echo "::error::all ${PASSES} passes failed"
+            exit 1
+          fi
+
+      - name: Report queue depth
+        if: always()
+        env:
+          COURT_URL: ${{ vars.COURT_URL || 'https://mandate-court.vercel.app' }}
+        run: |
+          set -euo pipefail
+          curl -sS --max-time 60 "${COURT_URL}/api/v1/health" -o /tmp/health.json || exit 0
+          node -e '
+            const body = JSON.parse(require("node:fs").readFileSync("/tmp/health.json", "utf8"));
+            const q = body.queue ?? {};
+            console.log(`version ${body.version} | mongodb ${body.checks?.mongodb} | pendingRelayJobs ${q.pendingRelayJobs ?? "?"} | pendingWebhooks ${q.pendingWebhooks ?? "?"} | deadLetter ${q.deadLetterWebhooks ?? "?"}`);
+            if ((q.deadLetterWebhooks ?? 0) > 0) console.log(`::warning::${q.deadLetterWebhooks} webhook event(s) are dead-lettered`);
+          '

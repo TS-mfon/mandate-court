@@ -12,10 +12,19 @@
 // API_KEY_PEPPER fallback would make them undecryptable. Verified with a
 // countDocuments on agents holding a ciphertext before running this.
 import { randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
 import { PROJECT_ID, PROJECT_NAME, vercel } from "./vercel-api";
 
 const TARGETS = ["production", "preview", "development"];
+const GITHUB_REPO = "TS-mfon/mandate-court";
+
+// Secrets that a consumer outside Vercel also holds, and must be updated in the
+// same breath. CRON_SECRET is read by the GitHub Actions schedule that drives
+// the queue processor: rotating it on Vercel alone silently breaks that cron,
+// which is exactly what happened on 2026-09-30 and went unnoticed for two days
+// because the processor was being driven by hand at the time.
+const GITHUB_MIRRORED = ["CRON_SECRET"];
 
 // Rotated because the user asked for fresh values.
 const ROTATE = ["API_KEY_PEPPER", "WEBHOOK_SIGNING_SECRET", "CRON_SECRET"];
@@ -28,6 +37,10 @@ type EnvRow = { id: string; key: string; target?: string[]; type: string };
 
 function secret() {
   return randomBytes(32).toString("base64");
+}
+
+function setGithubSecret(key: string, value: string) {
+  execFileSync("gh", ["secret", "set", key, "--repo", GITHUB_REPO], { input: value, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
 }
 
 async function replace(key: string, value: string, type: "sensitive" | "encrypted" | "plain") {
@@ -56,7 +69,8 @@ async function main() {
   if (dryRun) {
     for (const key of Object.keys(generated)) {
       const kind = ROTATE.includes(key) ? "rotate" : CREATE_SECRET.includes(key) ? "create (was absent)" : "set (config)";
-      console.log(`  ${key.padEnd(34)} ${kind}`);
+      const mirror = GITHUB_MIRRORED.includes(key) ? `, and mirror to GitHub secret on ${GITHUB_REPO}` : "";
+      console.log(`  ${key.padEnd(34)} ${kind}${mirror}`);
     }
     console.log("\nnothing written.");
     return;
@@ -73,6 +87,14 @@ async function main() {
     const replaced = await replace(key, generated[key], "sensitive");
     const kind = ROTATE.includes(key) ? "rotated" : "created";
     console.log(`  ${key.padEnd(34)} ${kind}, replaced ${replaced} prior entr${replaced === 1 ? "y" : "ies"}, targets ${TARGETS.join("+")}`);
+  }
+
+  // Mirror to every other holder of the same secret, or the next rotation
+  // breaks them silently.
+  for (const key of GITHUB_MIRRORED) {
+    if (!(key in generated)) continue;
+    setGithubSecret(key, generated[key]);
+    console.log(`  ${key.padEnd(34)} mirrored to GitHub Actions secret on ${GITHUB_REPO}`);
   }
   for (const [key, value] of Object.entries(PLAIN)) {
     const replaced = await replace(key, value, "plain");

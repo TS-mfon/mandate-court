@@ -3,6 +3,7 @@ import { createCaveat, getSmartAccountsEnvironment, signDelegation } from "@meta
 import { createExactExecutionTerms, ROOT_AUTHORITY } from "@metamask/delegation-core";
 import { createPublicClient, encodeFunctionData, formatTransactionRequest, http, keccak256, stringToHex, type Address, type Hex } from "viem";
 import { baseSepolia } from "viem/chains";
+import { baseSepoliaClient } from "./base-rpc";
 import { privateKeyToAccount, signAuthorization } from "viem/accounts";
 import type { ActorAuthorization } from "./action-auth";
 
@@ -130,9 +131,8 @@ type OneShotExecution = { target: Address; value: "0x0"; data: Hex };
 function config() {
   const registry = process.env.MANDATE_REGISTRY_ADDRESS as `0x${string}` | undefined;
   const privateKey = process.env.COURT_SIGNER_PRIVATE_KEY as `0x${string}` | undefined;
-  const rpc = process.env.BASE_SEPOLIA_RPC_URL;
-  if (!registry || !privateKey || !rpc) throw new Error("Base relay environment is incomplete");
-  return { registry, account: privateKeyToAccount(privateKey), rpc };
+  if (!registry || !privateKey) throw new Error("Base relay environment is incomplete");
+  return { registry, account: privateKeyToAccount(privateKey) };
 }
 
 function relayer() {
@@ -167,7 +167,7 @@ async function oneShotCapability() {
 
 async function signedOneShotTransactions(executions: OneShotExecution[], delegate: Address) {
   const privateKey = process.env.COURT_SIGNER_PRIVATE_KEY as Hex;
-  const { account, rpc } = config();
+  const { account } = config();
   const environment = getSmartAccountsEnvironment(baseSepolia.id);
   const transactions = await Promise.all(executions.map(async (execution) => {
     const caveat = createCaveat(
@@ -190,7 +190,7 @@ async function signedOneShotTransactions(executions: OneShotExecution[], delegat
     });
     return { permissionContext: [{ ...unsigned, signature }], executions: [execution] };
   }));
-  const publicClient = createPublicClient({ chain: baseSepolia, transport: http(rpc) });
+  const publicClient = baseSepoliaClient();
   const nonce = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
   const authorization = await signAuthorization({
     privateKey,
@@ -244,8 +244,8 @@ async function submitRelay(to: `0x${string}`, data: Hex, memo: string): Promise<
 }
 
 async function courtAuthorization(actor: ActorAuthorization) {
-  const { registry, account, rpc } = config();
-  const client = createPublicClient({ chain: baseSepolia, transport: http(rpc) });
+  const { registry, account } = config();
+  const client = baseSepoliaClient();
   const courtNonce = (await client.readContract({ address: registry, abi: registryAbi, functionName: "courtNonce" })) as bigint;
   const authorization = {
     mandateId: actor.mandateId,
