@@ -7,6 +7,7 @@ packages/mcp-server/skills
 .env
 .env.local
 .env.build
+.env.build.bak-*
 .env.agent-test
 .deployment/
 .agent-test/
@@ -19,3 +20,5 @@ contracts/base/broadcast
 .pytest_cache
 __pycache__
 *.pyc
+.runs/
+GATES.md
