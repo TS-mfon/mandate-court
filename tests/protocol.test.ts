@@ -8,6 +8,7 @@ import { successfulFinalizedExecution } from "../apps/web/lib/genlayer";
 import { deliveryTimestampIsCurrent } from "../apps/web/lib/delivery-time";
 import { terminalRelayError } from "../apps/web/lib/processor-errors";
 import { compactCaseId } from "../apps/web/lib/case-display";
+import { adapterActionResult } from "../apps/web/lib/adapter-actions";
 import { mandateTransactionFields } from "../apps/web/lib/relay-transactions";
 import { mandateSummaryProjection, publicAgentProjection } from "../apps/web/lib/public-projections";
 import { adjudicationDependencyState } from "../apps/web/lib/processor-dependencies";
@@ -263,5 +264,50 @@ describe("typed data transport", () => {
     });
     expect(() => JSON.stringify(typedData)).not.toThrow();
     expect(typedData.message.nonce).toBe("0");
+  });
+});
+
+describe("adapter preparation detection", () => {
+  // The REST layer is not uniform: accept, deliver, claim, and appeal answer
+  // 428 for the preparation step, but create answers 202 while still returning
+  // typed data that must be signed. Keying preparationRequired on the status
+  // alone told an A2A or hosted-MCP client that an unsigned create had been
+  // accepted.
+  const createPreparation = {
+    status: 202,
+    body: {
+      mandateId: "MC_1",
+      actorTypedData: { domain: {}, types: {}, primaryType: "ActorIntent", message: { nonce: "0", deadline: "1" } },
+      fundingAuthorization: { standard: "EIP-3009", typedData: {} },
+    },
+  };
+
+  it("flags a 202 create preparation as still requiring preparation", () => {
+    const result = adapterActionResult("create", undefined, createPreparation as never);
+    expect(result.preparationRequired).toBe(true);
+    expect(result.accepted).toBe(false);
+  });
+
+  it("still flags the 428 preparation used by accept, deliver, claim, and appeal", () => {
+    for (const action of ["accept", "deliver", "claim", "appeal"] as const) {
+      const result = adapterActionResult(action, "MC_1", { status: 428, body: { actorTypedData: {} } } as never);
+      expect(result.preparationRequired).toBe(true);
+      expect(result.accepted).toBe(false);
+    }
+  });
+
+  it("treats a submitted write as accepted rather than as preparation", () => {
+    const result = adapterActionResult("create", "MC_1", {
+      status: 202,
+      body: { mandateId: "MC_1", operationId: "op_1", status: "RELAY_PENDING" },
+    } as never);
+    expect(result.preparationRequired).toBe(false);
+    expect(result.accepted).toBe(true);
+  });
+
+  it("does not report a failure as accepted", () => {
+    const result = adapterActionResult("accept", "MC_1", { status: 409, body: { error: "Invalid transition" } } as never);
+    expect(result.preparationRequired).toBe(false);
+    expect(result.accepted).toBe(false);
   });
 });

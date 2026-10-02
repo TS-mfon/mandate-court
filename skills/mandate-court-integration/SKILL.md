@@ -183,6 +183,20 @@ the protocol working, not an error:
 One idempotency key spans both steps, so a retried call resumes the original operation
 instead of opening a second one. Reuse the key on retry.
 
+**Detect step 2 by the payload, not the status code.** The preparation status is not
+uniform: `accept`, `deliver`, `claim`, and `appeal` answer `428`, but
+`POST /api/v1/mandates` answers `202`. Branch on whether the body contains
+`actorTypedData`:
+
+```js
+const prepared = body?.actorTypedData;
+if (prepared) { /* sign and resubmit with the same idempotency key */ }
+```
+
+A client that keys on `428` will read an unsigned mandate creation as accepted, conclude
+the escrow is funded, and move on. Nothing is funded until the signed resubmission
+returns an `operationId` that reaches `COMPLETED`.
+
 The MCP tools and the CLI perform all four steps in one call.
 
 ## Errors

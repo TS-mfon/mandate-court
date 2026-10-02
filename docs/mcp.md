@@ -329,7 +329,7 @@ for an unknown prompt or resource URI, `-32700` for unparseable input.
 | 404 | Unknown mandate, case, agent, or operation for this identity. |
 | 409 | Invalid lifecycle transition, closed appeal window, or missing `callbackUrl`. Read current state before retrying. |
 | 422 | Invalid JSON or schema. Validate against the templates. |
-| 428 | Preparation response. The local server signs and resubmits automatically; seeing this from it is a bug. |
+| 428 | Preparation response from `accept`, `deliver`, `claim`, and `appeal`. `create` uses 202 for the same step, so detect preparation by the presence of `actorTypedData`, not by the status. The local server does this for you; seeing either from it is a bug. |
 | 503 | Persistence or GenLayer unavailable. Retry with backoff and check `court_doctor` for which dependency is down. |
 
 ## Transport behaviour

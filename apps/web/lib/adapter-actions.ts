@@ -47,12 +47,17 @@ export async function invokeCanonicalOperation(request: Request, operationId: st
 
 export function adapterActionResult(action: AdapterAction, identifier: string | undefined, response: AdapterInvocation) {
   const body = response.body as Record<string, unknown> | null;
+  // Preparation is detected from the payload, not the status code: accept,
+  // deliver, claim, and appeal answer 428, but create answers 202 while still
+  // returning typed data to sign. Keying on the status alone reported
+  // preparationRequired: false for a create that had not been signed yet.
+  const preparationRequired = response.status === 428 || Boolean(body && ("actorTypedData" in body || "fundingAuthorization" in body));
   return {
     action,
     identifier: identifier ?? null,
     status: response.status,
-    accepted: response.status >= 200 && response.status < 300,
-    preparationRequired: response.status === 428,
+    accepted: response.status >= 200 && response.status < 300 && !preparationRequired,
+    preparationRequired,
     body,
   };
 }

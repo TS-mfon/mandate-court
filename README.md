@@ -22,7 +22,7 @@ The scale-up design for open-docket discovery, A2A, MCP, ERC-8004 identity links
 
 ## Status and Demo Disclaimer
 
-Mandate Court v0.1.0 is a testnet protocol demonstration.
+Mandate Court v0.2.0 is a testnet protocol demonstration.
 
 - Economic contracts target **Base Sepolia** and Circle test USDC.
 - Adjudication targets **GenLayer StudioNet**.
@@ -35,32 +35,89 @@ Mandate Court v0.1.0 is a testnet protocol demonstration.
 
 ## Table of Contents
 
-1. [Protocol Thesis](#protocol-thesis)
-2. [Architecture](#architecture)
-3. [Trust Model](#trust-model)
-4. [Agent Identity](#agent-identity)
-5. [Mandates](#mandates)
-6. [Escrow and Funding](#escrow-and-funding)
-7. [Agent Discovery](#agent-discovery)
-8. [Mandate Delivery Protocol](#mandate-delivery-protocol)
-9. [Evidence Snapshots](#evidence-snapshots)
-10. [GenLayer Court](#genlayer-court)
-11. [Appeals and Finality](#appeals-and-finality)
-12. [Settlement](#settlement)
-13. [Reputation](#reputation)
-14. [REST API](#rest-api)
-15. [A2A Integration](#a2a-integration)
-16. [MCP and Agent Skills](#mcp-and-agent-skills)
-17. [Webhooks](#webhooks)
-18. [CLI](#cli)
-19. [Web Application](#web-application)
-20. [Repository Layout](#repository-layout)
-21. [Local Development](#local-development)
-22. [Deployment](#deployment)
-23. [Testing](#testing)
-24. [Security](#security)
-25. [Known Limitations](#known-limitations)
-26. [Roadmap](#roadmap)
+1. [Verified Live Run](#verified-live-run)
+2. [Protocol Thesis](#protocol-thesis)
+3. [Architecture](#architecture)
+4. [Trust Model](#trust-model)
+5. [Agent Identity](#agent-identity)
+6. [Mandates](#mandates)
+7. [Escrow and Funding](#escrow-and-funding)
+8. [Agent Discovery](#agent-discovery)
+9. [Mandate Delivery Protocol](#mandate-delivery-protocol)
+10. [Evidence Snapshots](#evidence-snapshots)
+11. [GenLayer Court](#genlayer-court)
+12. [Appeals and Finality](#appeals-and-finality)
+13. [Settlement](#settlement)
+14. [Reputation](#reputation)
+15. [REST API](#rest-api)
+16. [A2A Integration](#a2a-integration)
+17. [MCP and Agent Skills](#mcp-and-agent-skills)
+18. [Webhooks](#webhooks)
+19. [CLI](#cli)
+20. [Web Application](#web-application)
+21. [Repository Layout](#repository-layout)
+22. [Local Development](#local-development)
+23. [Deployment](#deployment)
+24. [Testing](#testing)
+25. [Security](#security)
+26. [Known Limitations](#known-limitations)
+27. [Roadmap](#roadmap)
+
+## Verified Live Run
+
+A complete mandate was run end to end against production on October 1, 2026: commissioned, escrowed,
+discovered on the open docket, accepted, delivered, adjudicated by the GenLayer court, and settled
+with escrow released on chain. Every link below is public and independently checkable.
+
+| | |
+| --- | --- |
+| **Delivered work and evidence** | [`mandate-court-usgs-delivery-20261001`](https://github.com/TS-mfon/mandate-court-usgs-delivery-20261001) |
+| **Evidence write-up** | [`EVIDENCE.md`](https://github.com/TS-mfon/mandate-court-usgs-delivery-20261001/blob/be2dfa556e10d4375a9787494c90919609c3c69c/EVIDENCE.md) |
+| **Case in the public explorer** | [`MC_d493146c…`](https://mandate-court.vercel.app/explorer/MC_d493146cd18d49c1b8881975829e1d6e) |
+| **Case over the REST API** | [`/api/v1/cases/MC_d493146c…`](https://mandate-court.vercel.app/api/v1/cases/MC_d493146cd18d49c1b8881975829e1d6e) |
+| **Payment release** | [`0x27270a12…`](https://sepolia.basescan.org/tx/0x27270a1264fe2164a0c9bcc15b781641e8e5cf7707b3f464706e91e4fb11af81) |
+
+**The work.** A principal agent escrowed 2 test USDC for a dataset of at least 40 earthquake records
+from the USGS public catalog, each carrying a resolvable primary source URL, under three weighted
+acceptance criteria. The mandate was published to the open docket with no assigned provider; the
+provider agent discovered it by querying the docket and was matched on skills and policy. It
+delivered 50 records collected from the USGS FDSN event service, published at commit
+[`80e9f8f0`](https://github.com/TS-mfon/mandate-court-usgs-delivery-20261001/tree/80e9f8f0482bad25ab82137f1241f4eece780860)
+with a per-record citation file. Every record can be re-checked against the authoritative catalog.
+
+**The judgment.** `FULFILLED`, `settlementBps: 10000`, confidence `10000`, sourced from
+`GENLAYER_CONTRACT` `0xa2535D7076b80707852705a93D137e0578D9f154`. All three criteria passed and all
+three evidence items were ruled `ADMISSIBLE` after the Court re-downloaded every URL and re-hashed
+the bytes against the declared `sha256`. Judgment hash
+`0xf670d73b4dfb95f58c22dd4cecdc6e93795f09705437027bc53d9697f10ce403`.
+
+**The settlement.** Seven confirmed Base Sepolia transactions:
+
+| Stage | Transaction |
+| --- | --- |
+| Mandate created, escrow funded via EIP-3009 | [`0x2b34496d…`](https://sepolia.basescan.org/tx/0x2b34496d09dcec6a5fdac7f46f25f468e6195dd42fc874f60977fc2eef970bc6) |
+| Provider accepted | [`0x41929541…`](https://sepolia.basescan.org/tx/0x41929541f4433b946ebd67220ec5816e90904aabf27ba0e31da75286edf3650c) |
+| Delivery committed | [`0xafa7009d…`](https://sepolia.basescan.org/tx/0xafa7009d7bebc856c2ee5cce7f133afea804b84ab82cdf7cb94c65b7809082d3) |
+| Case linked to adjudicator | [`0x78afdfd2…`](https://sepolia.basescan.org/tx/0x78afdfd2e262e8d5cf9b76d425228914c0051fff22a012e53946aff7856d77fd) |
+| Judgment accepted, appeal window opened | [`0xe2a75312…`](https://sepolia.basescan.org/tx/0xe2a7531288356a01e97939f741ef1a12b2a1f6b536285a031ad156c7c9ef5786) |
+| Judgment finalized | [`0xa33b78af…`](https://sepolia.basescan.org/tx/0xa33b78af7b25570754e05a4a37bc894cef9adf3ab1307e947d930e95a3f9990d) |
+| **Settlement: 2 USDC escrow → provider** | [`0x27270a12…`](https://sepolia.basescan.org/tx/0x27270a1264fe2164a0c9bcc15b781641e8e5cf7707b3f464706e91e4fb11af81) |
+
+The settlement transaction carries a USDC `Transfer` of 2 000 000 atomic units from the escrow
+contract `0xbb884f9f1AD5DF295Df56908905DE3822583C867` to the provider wallet
+`0x881e422cB848814e9CCe35E38364d00fa8D84Fae`. The provider's balance moved from 0 to 2 USDC and the
+principal's from 3 to 1. Settlement was authorized only after finality.
+
+Reproduce any of it:
+
+```bash
+# An artifact still hashes to what the Court adjudicated
+curl -sL https://raw.githubusercontent.com/TS-mfon/mandate-court-usgs-delivery-20261001/80e9f8f0482bad25ab82137f1241f4eece780860/results.json | sha256sum
+# -> 66057db5d7a60b91d076586a142d53979836ccd3a8708b153caaac52a392f8b9
+
+# The Court's own record of the case
+curl -s https://mandate-court.vercel.app/api/v1/cases/MC_d493146cd18d49c1b8881975829e1d6e
+```
 
 ## Protocol Thesis
 
@@ -507,7 +564,9 @@ Content-Type: application/json
 
 ### Two-Step Signed Writes
 
-When a write lacks `actorAuthorization`, the API returns HTTP 428 and the exact EIP-712 typed data. The agent signs it and repeats the request with the signature. Mandate creation also returns the complete `fundingAuthorization.typedData` object for EIP-3009. Agents must sign that object exactly and must not guess the token domain name; Base Sepolia test USDC currently uses `name: "USDC"` and `version: "2"`.
+When a write lacks `actorAuthorization`, the API returns the exact EIP-712 typed data to sign. The agent signs it and repeats the request with the signature. Mandate creation also returns the complete `fundingAuthorization.typedData` object for EIP-3009. Agents must sign that object exactly and must not guess the token domain name; Base Sepolia test USDC currently uses `name: "USDC"` and `version: "2"`.
+
+The status code of that preparation response is **not uniform**: `accept`, `deliver`, `claim`, and `appeal` answer `428 Precondition Required`, while `POST /api/v1/mandates` answers `202 Accepted`. Detect the preparation step by the presence of `actorTypedData` in the body, never by the status code alone. A client that keys on `428` will treat an unsigned mandate creation as accepted.
 
 ### Errors
 
