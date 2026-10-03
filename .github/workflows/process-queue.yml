@@ -70,21 +70,24 @@ jobs:
             if [ "${code}" = "200" ] || [ "${code}" = "202" ]; then
               node -e '
                 const fs = require("node:fs");
-                let body = {};
-                try { body = JSON.parse(fs.readFileSync("/tmp/pass.json", "utf8")); } catch { return; }
-                if (body.skipped) {
-                  console.log(`  skipped: ${body.reason ?? "lease held"}`);
-                  return;
-                }
-                const results = Array.isArray(body.results) ? body.results : [];
-                if (!results.length) {
-                  console.log("  nothing pending");
-                  return;
-                }
-                console.log(`  processed ${body.processed}`);
-                for (const r of results.slice(0, 12)) {
-                  console.log(`    ${r.type ?? "job"} ${r.mandateId ?? r.operationId ?? ""} -> ${r.status ?? r.outcome ?? JSON.stringify(r).slice(0, 80)}`);
-                }
+                // Wrapped: a bare return is illegal at the top level of node -e.
+                (() => {
+                  let body = {};
+                  try { body = JSON.parse(fs.readFileSync("/tmp/pass.json", "utf8")); } catch { return; }
+                  if (body.skipped) {
+                    console.log(`  skipped: ${body.reason ?? "lease held"}`);
+                    return;
+                  }
+                  const results = Array.isArray(body.results) ? body.results : [];
+                  if (!results.length) {
+                    console.log("  nothing pending");
+                    return;
+                  }
+                  console.log(`  processed ${body.processed}`);
+                  for (const r of results.slice(0, 12)) {
+                    console.log(`    ${r.type ?? "job"} ${r.mandateId ?? r.operationId ?? ""} -> ${r.status ?? r.outcome ?? JSON.stringify(r).slice(0, 80)}`);
+                  }
+                })();
               '
             else
               echo "::warning::pass ${i} returned HTTP ${code}"
