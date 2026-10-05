@@ -1,3 +1,4 @@
+import { baseSepoliaRpcUrls } from "@/lib/base-rpc";
 import { database } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -22,9 +23,20 @@ export async function GET() {
       checks,
       queue: { pendingRelayJobs, pendingWebhooks, deadLetterWebhooks },
       integrations: {
-        base: Boolean(process.env.BASE_SEPOLIA_RPC_URL && process.env.MANDATE_REGISTRY_ADDRESS),
+        // Reads resolve through the shared failover transport, which supplies
+        // verified defaults, so the registry address is the real requirement.
+        base: Boolean(process.env.MANDATE_REGISTRY_ADDRESS) && baseSepoliaRpcUrls().length > 0,
+        baseRpcEndpoints: baseSepoliaRpcUrls().length,
         genlayer: Boolean(process.env.GENLAYER_RPC_URL && process.env.GENLAYER_CONTRACT_ADDRESS),
-        oneShot: Boolean(process.env.ONESHOT_RELAYER_URL),
+        // 1Shot is the relayer every lifecycle write goes through, and it falls
+        // back to a hosted endpoint, so it is available whether or not the
+        // variable is set. Reporting Boolean(env) said "false" on a deployment
+        // that was relaying through 1Shot successfully, which read as having no
+        // relayer configured at all.
+        oneShot: true,
+        oneShotEndpoint: process.env.ONESHOT_RELAYER_URL?.trim() ? "configured" : "default",
+        // Optional. Reached only after a 1Shot failure; false here means a
+        // 1Shot outage surfaces as an error rather than being absorbed.
         gelatoFallback: Boolean(process.env.GELATO_RELAY_API_KEY),
       },
     }, { status: 200 });

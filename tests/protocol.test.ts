@@ -9,6 +9,7 @@ import { deliveryTimestampIsCurrent } from "../apps/web/lib/delivery-time";
 import { terminalRelayError } from "../apps/web/lib/processor-errors";
 import { compactCaseId } from "../apps/web/lib/case-display";
 import { adapterActionResult } from "../apps/web/lib/adapter-actions";
+import { baseSepoliaClient, baseSepoliaRpcUrls, resetBaseSepoliaClient } from "../apps/web/lib/base-rpc";
 import { mandateTransactionFields } from "../apps/web/lib/relay-transactions";
 import { mandateSummaryProjection, publicAgentProjection } from "../apps/web/lib/public-projections";
 import { adjudicationDependencyState } from "../apps/web/lib/processor-dependencies";
@@ -309,5 +310,58 @@ describe("adapter preparation detection", () => {
     const result = adapterActionResult("accept", "MC_1", { status: 409, body: { error: "Invalid transition" } } as never);
     expect(result.preparationRequired).toBe(false);
     expect(result.accepted).toBe(false);
+  });
+});
+
+describe("base sepolia rpc failover", () => {
+  const saved = { url: process.env.BASE_SEPOLIA_RPC_URL, urls: process.env.BASE_SEPOLIA_RPC_URLS };
+
+  afterEach(() => {
+    process.env.BASE_SEPOLIA_RPC_URL = saved.url;
+    process.env.BASE_SEPOLIA_RPC_URLS = saved.urls;
+    resetBaseSepoliaClient();
+  });
+
+  it("always resolves at least two endpoints so one outage is survivable", () => {
+    delete process.env.BASE_SEPOLIA_RPC_URL;
+    delete process.env.BASE_SEPOLIA_RPC_URLS;
+    const urls = baseSepoliaRpcUrls();
+    expect(urls.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(urls).size).toBe(urls.length);
+    for (const url of urls) expect(url.startsWith("https://")).toBe(true);
+  });
+
+  it("puts configured endpoints ahead of the defaults and keeps their order", () => {
+    process.env.BASE_SEPOLIA_RPC_URLS = "https://first.example, https://second.example";
+    delete process.env.BASE_SEPOLIA_RPC_URL;
+    const urls = baseSepoliaRpcUrls();
+    expect(urls[0]).toBe("https://first.example");
+    expect(urls[1]).toBe("https://second.example");
+    // Defaults are appended, never dropped, so a typo in the list is not fatal.
+    expect(urls.length).toBeGreaterThan(2);
+  });
+
+  it("still honours the single-URL variable and does not duplicate it", () => {
+    delete process.env.BASE_SEPOLIA_RPC_URLS;
+    process.env.BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
+    const urls = baseSepoliaRpcUrls();
+    expect(urls[0]).toBe("https://sepolia.base.org");
+    expect(urls.filter((u) => u === "https://sepolia.base.org")).toHaveLength(1);
+  });
+
+  it("ignores blank and malformed entries rather than building a dead transport", () => {
+    process.env.BASE_SEPOLIA_RPC_URLS = ",, not-a-url ,https://good.example,";
+    delete process.env.BASE_SEPOLIA_RPC_URL;
+    const urls = baseSepoliaRpcUrls();
+    expect(urls).toContain("https://good.example");
+    expect(urls.every((u) => u.startsWith("http"))).toBe(true);
+  });
+
+  it("rebuilds the client when the endpoint list changes", () => {
+    process.env.BASE_SEPOLIA_RPC_URLS = "https://one.example";
+    const first = baseSepoliaClient();
+    expect(baseSepoliaClient()).toBe(first);
+    process.env.BASE_SEPOLIA_RPC_URLS = "https://two.example";
+    expect(baseSepoliaClient()).not.toBe(first);
   });
 });

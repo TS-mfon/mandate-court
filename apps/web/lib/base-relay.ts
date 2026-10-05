@@ -141,8 +141,19 @@ function relayer() {
   return createGelatoEvmRelayerClient({ apiKey, testnet: true });
 }
 
+/**
+ * The hosted 1Shot relayer. This default is why 1Shot works without
+ * ONESHOT_RELAYER_URL being set, and why /api/v1/health must not report the
+ * integration as unavailable merely because the variable is absent.
+ */
+export const DEFAULT_ONESHOT_RELAYER_URL = "https://relayer.1shotapi.dev/relayers";
+
+export function oneShotRelayerUrl() {
+  return process.env.ONESHOT_RELAYER_URL?.trim() || DEFAULT_ONESHOT_RELAYER_URL;
+}
+
 async function oneShotRpc(method: string, params: unknown) {
-  const url = process.env.ONESHOT_RELAYER_URL || "https://relayer.1shotapi.dev/relayers";
+  const url = oneShotRelayerUrl();
   const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
