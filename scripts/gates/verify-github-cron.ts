@@ -104,10 +104,23 @@ async function main() {
     console.log(`most recent success    ${latest.created_at} (${ageHours.toFixed(1)}h ago, sha ${latest.head_sha.slice(0, 8)})`);
     if (ageHours > 72) failures.push(`the most recent successful run is ${ageHours.toFixed(0)}h old; dispatch one to confirm the current workflow works`);
 
-    // And the processor must have actually been reached in it.
-    const log = (() => {
+    // Fetch the process job's log through the Actions API. `gh run view --log`
+    // can return an empty string for completed runs even when their logs are
+    // available through the job logs endpoint.
+    const jobs = (() => {
       try {
-        return gh(["run", "view", String(latest.id), "--repo", SLUG, "--log"]);
+        return JSON.parse(gh(["api", `repos/${SLUG}/actions/runs/${latest.id}/jobs`])) as {
+          jobs: Array<{ id: number; name: string; conclusion: string | null }>;
+        };
+      } catch {
+        return { jobs: [] };
+      }
+    })();
+    const processJob = jobs.jobs.find((j) => j.name === "process" && j.conclusion === "success");
+    const log = (() => {
+      if (!processJob) return "";
+      try {
+        return gh(["api", `repos/${SLUG}/actions/jobs/${processJob.id}/logs`]);
       } catch {
         return "";
       }
